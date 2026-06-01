@@ -505,7 +505,8 @@ class stxmServer:
             message["time"] = str(datetime.datetime.now())
             self.command_sock.send_pyobj(message)
 
-if __name__=="__main__":
+# Required by the 'stxmserver' entry point defined in pyproject.toml
+def main():
     a = stxmServer(simulation = options['simulation'])
     try:
         asyncio.run(a.command_handler())
@@ -514,3 +515,6 @@ if __name__=="__main__":
         a.cleanup()
         print("Server stopped")
         sys.exit(0)
+
+if __name__=="__main__":
+    main()
