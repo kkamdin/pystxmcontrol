@@ -1,9 +1,15 @@
 """
-Run binary assertions against the latest run in traces.jsonl.
-Appends results to results.jsonl and prints a summary.
+Run binary assertions against traces in traces.jsonl.
+Appends results to results.jsonl and prints a pass/fail table.
+
+Since traces.jsonl accumulates raw LLM responses across all runs, you can
+re-score historical runs after updating assertion definitions without
+re-calling the LLM.
 
 Usage:
-    .venv/bin/python evals/intelligence_agent/run_assertions.py
+    .venv/bin/python evals/intelligence_agent/run_assertions.py                                          # latest run → results.jsonl
+    .venv/bin/python evals/intelligence_agent/run_assertions.py --run-id 20260610_143022                 # one run → results.jsonl
+    .venv/bin/python evals/intelligence_agent/run_assertions.py --run-id all --output results_v2.jsonl   # all runs → named file (required)
 
 ## How binary assertions work (Shankar et al. methodology)
 
@@ -43,6 +49,7 @@ gap. A continuous similarity score would be anti-binary; a thresholded one is no
 #   *ignores* misleading context (e.g. SampleX move before intensity_drop).
 """
 
+import argparse
 import json
 from pathlib import Path
 
@@ -70,10 +77,11 @@ ASSERTIONS: dict[str, dict] = {
         "applies": lambda tr: True,
         "check": lambda tr: (
             _contains(tr["response"], "intensity", "signal", "counts", "beam", "flux")
-            if "intensity" in tr["tuple"]["anomaly_type"]
+            if tr["tuple"]["anomaly_type"] == "intensity_drop"
+            else _contains(tr["response"], "drift", "decay", "declining", "trend", "slope",
+                           "intensity", "signal")
+            if tr["tuple"]["anomaly_type"] == "intensity_drift"
             else _contains(tr["response"], "focus", "zone plate", "resolution", "sharp", "blur")
-            if tr["tuple"]["anomaly_type"] == "focus_decline"
-            else _contains(tr["response"], "drift", "decay", "declining", "trend", "slope")
         ),
     },
     "has_action": {
@@ -133,34 +141,20 @@ def evaluate(trace: dict) -> dict[str, bool | None]:
     return results
 
 
-def main() -> None:
-    traces = []
-    with open(TRACES_PATH) as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                traces.append(json.loads(line))
-
-    if not traces:
-        print("No traces found in traces.jsonl — run run_eval.py first.")
-        return
-
-    run_ids = sorted({t["run_id"] for t in traces})
-    run_id = run_ids[-1]
-    run_traces = [t for t in traces if t["run_id"] == run_id]
-    print(f"Run: {run_id}  ({len(run_traces)} traces)\n")
-
+def _score_run(run_id: str, run_traces: list, output_path: Path) -> None:
+    """Score one run's traces, print a table, and append results to output_path."""
     names = list(ASSERTIONS.keys())
     col_w = 24
 
     header = (f"{'ID':>3}  {'anomaly_type':15} {'sev':8} {'context':20}  "
               + "  ".join(f"{n[:col_w]:<{col_w}}" for n in names))
+    print(f"Run: {run_id}  ({len(run_traces)} traces)\n")
     print(header)
     print("-" * len(header))
 
     totals = {n: {"pass": 0, "fail": 0, "na": 0} for n in names}
 
-    with open(RESULTS_PATH, "a") as out:
+    with open(output_path, "a") as out:
         for tr in run_traces:
             results = evaluate(tr)
 
@@ -201,7 +195,64 @@ def main() -> None:
         na_note = f"  ({t['na']} N/A)" if t["na"] else ""
         print(f"  {name}: {a['desc']} — {t['pass']}/{applicable} ({rate:.0f}%){na_note}")
 
-    print(f"\nResults   → {RESULTS_PATH}")
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--run-id",
+        default="latest",
+        help="Run ID to score, 'latest' (default), or 'all' to re-score every run in traces.jsonl.",
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help=(
+            "Output file for results (default: results.jsonl). "
+            "Required when --run-id all is used — keeps experimental assertion snapshots "
+            "separate from the canonical results.jsonl."
+        ),
+    )
+    args = parser.parse_args()
+
+    if args.run_id == "all" and args.output is None:
+        parser.error("--output is required when --run-id all is used. "
+                     "Choose a name that reflects the assertions being tested, "
+                     "e.g. --output results_keyword_v2.jsonl")
+
+    output_path = Path(args.output) if args.output else RESULTS_PATH
+
+    traces = []
+    with open(TRACES_PATH) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                traces.append(json.loads(line))
+
+    if not traces:
+        print("No traces found in traces.jsonl — run run_eval.py first.")
+        return
+
+    all_run_ids = sorted({t["run_id"] for t in traces})
+
+    if args.run_id == "latest":
+        selected = [all_run_ids[-1]]
+    elif args.run_id == "all":
+        selected = all_run_ids
+    else:
+        if args.run_id not in all_run_ids:
+            print(f"Run ID '{args.run_id}' not found. Available runs:")
+            for r in all_run_ids:
+                print(f"  {r}")
+            return
+        selected = [args.run_id]
+
+    for run_id in selected:
+        run_traces = [t for t in traces if t["run_id"] == run_id]
+        _score_run(run_id, run_traces, output_path)
+        if run_id != selected[-1]:
+            print()
+
+    print(f"\nResults   → {output_path}")
     print(f"Next: .venv/bin/python evals/intelligence_agent/report.py")
 
 

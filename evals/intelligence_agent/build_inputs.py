@@ -157,6 +157,10 @@ def main() -> None:
             if line:
                 tuples.append(json.loads(line))
 
+    missing = {t["id"] for t in tuples} - set(_EVENTS)
+    if missing:
+        raise ValueError(f"No _EVENTS entry for tuple IDs: {sorted(missing)}")
+
     anomaly_cfg = config.get("intelligence", {}).get("anomaly", {})
     inputs_meta = {
         "built_at": time.strftime("%Y-%m-%dT%H:%M:%S"),

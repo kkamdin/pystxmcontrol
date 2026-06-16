@@ -1,14 +1,17 @@
 """
 Step 6: Run each synthetic input through AgentInterface and collect traces.
 
+Routes each input through AgentInterface.dispatch() — the same call path
+production uses — so any change to prompt formatting or dispatch logic is
+caught automatically.
+
 Each run gets a unique run_id (timestamp slug). Traces are appended to
 traces.jsonl so all runs accumulate in one file.
 
-Also calls _log_trace() so each run appears in the production system log
+dispatch() also writes each run to the production system log
 (agent_traces_intelligence.jsonl) alongside real session traces.
 
 Token counts and estimated cost are written to runs_meta.jsonl after each run.
-Use the /cost/estimate endpoint — see report.py for display.
 
 Requires the appropriate API key env var to be set (ANTHROPIC_API_KEY or OPENAI_API_KEY,
 depending on intelligence.agent.provider in config) and intelligence.agent.enabled = true.
@@ -17,6 +20,7 @@ Usage:
     .venv/bin/python evals/intelligence_agent/run_eval.py
 """
 
+import asyncio
 import json
 import sys
 import time
@@ -59,6 +63,15 @@ def main() -> None:
         print("Warning: inputs_meta.json not found — run build_inputs.py first.")
 
     agent = AgentInterface(config)
+    agent.cooldown_seconds = 0  # disable cooldown so all inputs run without waiting
+
+    # Capture the formatted prompt and token usage from dispatch's internal _log_trace call.
+    _trace_capture: dict = {}
+    _orig_log_trace = agent._log_trace
+    def _capturing_log_trace(entry: dict) -> None:
+        _trace_capture.update(entry)
+        _orig_log_trace(entry)
+    agent._log_trace = _capturing_log_trace
 
     inputs = []
     with open(INPUTS_PATH) as f:
@@ -74,42 +87,25 @@ def main() -> None:
 
     with open(TRACES_PATH, "a") as out:
         for inp in inputs:
+            _trace_capture.clear()
             t = inp["tuple"]
-            prompt = agent._format_prompt(inp["anomaly"], inp["recent_events"])
-            error = None
-            usage = {"input_tokens": 0, "output_tokens": 0}
+
             try:
-                # TODO: calls _call_api() directly, bypassing dispatch() and its
-                # prompt-formatting logic. If dispatch() is updated but _format_prompt()
-                # is not, evals won't catch it. Consider an integration path through
-                # dispatch() for full coverage.
-                response, usage = agent._call_api(prompt)
+                suggestion = asyncio.run(agent.dispatch(inp["anomaly"], inp["recent_events"]))
+                response = suggestion["suggestion"] if suggestion else "[Agent unavailable: in cooldown]"
             except Exception as exc:
                 response = f"[Agent unavailable: {exc}]"
-                error = str(exc)
+
+            # dispatch() already wrote to the production system log via _log_trace.
+            # Pull usage and error from what it logged; use 0 when the API call failed (None → int).
+            usage = {
+                "input_tokens": _trace_capture.get("input_tokens") or 0,
+                "output_tokens": _trace_capture.get("output_tokens") or 0,
+            }
+            error = _trace_capture.get("error")
 
             total_input_tokens += usage["input_tokens"]
             total_output_tokens += usage["output_tokens"]
-
-            # Write to the production system log (no tuple context).
-            agent._log_trace({
-                "call_type": "dispatch",
-                "timestamp": time.time(),
-                "model": agent.model,
-                "system_prompt": _SYSTEM_PROMPT,
-                "prompt": prompt,
-                "response": response,
-                "anomaly_type": inp["anomaly"].get("type"),
-                "severity": inp["anomaly"].get("severity"),
-                "input_tokens": usage["input_tokens"],
-                "output_tokens": usage["output_tokens"],
-                "context_window": agent.context_window,
-                "context_fill_pct": (
-                    round(usage["input_tokens"] / agent.context_window * 100, 2)
-                    if agent.context_window else None
-                ),
-                "error": error,
-            })
 
             # Append to eval-specific traces (full context for assertions).
             trace = {
@@ -119,7 +115,7 @@ def main() -> None:
                 "anomaly": inp["anomaly"],
                 "recent_events": inp["recent_events"],
                 "system_prompt": _SYSTEM_PROMPT,
-                "prompt": prompt,
+                "prompt": _trace_capture.get("prompt", ""),
                 "response": response,
                 "model": agent.model,
                 "timestamp": time.time(),

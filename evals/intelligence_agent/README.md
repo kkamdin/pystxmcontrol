@@ -62,12 +62,20 @@ Also writes a token summary and posts to `/cost/estimate` for a cost breakdown.
 
 ### Step 3 — Score assertions
 
-Scores the latest run against 7 binary criteria. Results are appended to `results.jsonl`. Prints a pass/fail table to the console.
+Scores runs against 7 binary criteria and appends results to `results.jsonl`. By default scores only the latest run, but since `traces.jsonl` stores the full raw responses you can re-score historical runs after updating assertion definitions — no need to re-call the LLM.
 
 ```bash
+# Score the latest run (default) → appends to results.jsonl
 .venv/bin/python evals/intelligence_agent/run_assertions.py
-# → appends to evals/intelligence_agent/results.jsonl
+
+# Score one specific run by ID → appends to results.jsonl
+.venv/bin/python evals/intelligence_agent/run_assertions.py --run-id 20260610_143022
+
+# Re-score every accumulated run with updated assertions → named output file required
+.venv/bin/python evals/intelligence_agent/run_assertions.py --run-id all --output results_keyword_v2.jsonl
 ```
+
+`--output` is accepted for any invocation and is required when `--run-id all` is used. The intent is that `results.jsonl` stays as the canonical scoreboard for your current assertion definitions, while named files (e.g. `results_keyword_v2.jsonl`, `results_with_judge.jsonl`) capture experimental snapshots for comparison. This makes it straightforward to compare the effect of different assertion implementations against the same set of historical traces without re-running the LLM.
 
 ### Step 4 — Generate the report
 
