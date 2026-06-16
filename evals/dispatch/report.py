@@ -16,7 +16,6 @@ from pathlib import Path
 
 RESULTS_PATH = Path(__file__).parent / "results.jsonl"
 RUNS_META_PATH = Path(__file__).parent / "runs_meta.jsonl"
-INPUTS_META_PATH = Path(__file__).parent / "inputs_meta.json"
 REPORT_PATH = Path(__file__).parent / "report.html"
 
 ASSERTION_DESCRIPTIONS = {
@@ -77,10 +76,6 @@ def main() -> None:
         print("No results found — run run_assertions.py first.")
         return
 
-    inputs_meta = {}
-    if INPUTS_META_PATH.exists():
-        inputs_meta = json.loads(INPUTS_META_PATH.read_text())
-
     # Group by run_id
     runs: dict[str, list] = defaultdict(list)
     for r in rows:
@@ -99,8 +94,8 @@ def main() -> None:
             seen_ids.add(r["id"])
     tuple_order.sort(key=lambda r: r["id"])
 
-    # Build cell data: {(tuple_id, assertion): pass_rate or None}
-    cell_data: dict[tuple, float | None] = {}
+    # Build cell data: {(tuple_id, assertion): (n_pass, n_applicable) or None}
+    cell_data: dict[tuple, tuple[int, int] | None] = {}
     for tup in tuple_order:
         tid = tup["id"]
         for aname in assertion_names:
@@ -109,13 +104,18 @@ def main() -> None:
             if not applicable:
                 cell_data[(tid, aname)] = None
             else:
-                cell_data[(tid, aname)] = sum(applicable) / len(applicable)
+                cell_data[(tid, aname)] = (sum(applicable), len(applicable))
 
-    # Per-assertion overall pass rate (across all applicable cells)
+    # Per-assertion overall pass rate (weighted by applicable count per cell)
     assertion_rates: dict[str, float | None] = {}
     for aname in assertion_names:
-        applicable = [v for (tid, an), v in cell_data.items() if an == aname and v is not None]
-        assertion_rates[aname] = sum(applicable) / len(applicable) if applicable else None
+        cells = [v for (tid, an), v in cell_data.items() if an == aname and v is not None]
+        if not cells:
+            assertion_rates[aname] = None
+        else:
+            total_pass = sum(n_pass for n_pass, _ in cells)
+            total_app = sum(n_app for _, n_app in cells)
+            assertion_rates[aname] = total_pass / total_app if total_app else None
 
     # Load runs_meta keyed by run_id for token/cost lookup.
     runs_meta: dict[str, dict] = {}
@@ -159,16 +159,15 @@ def main() -> None:
         return (f'<td style="padding:6px 12px;font-size:12px;color:#374151;'
                 f'white-space:nowrap;border-right:1px solid #e5e7eb">{text}</td>')
 
-    def td_cell(rate: float | None, n_runs: int) -> str:
+    def td_cell(counts: tuple[int, int] | None) -> str:
+        rate = counts[0] / counts[1] if counts is not None else None
         bg = _color(rate)
         fg = _text_color(rate)
-        if rate is None:
+        if counts is None:
             label = "—"
-        elif n_runs == 1:
-            label = "✓" if rate == 1.0 else "✗"
         else:
-            total = round(rate * n_runs)
-            label = f"{total}/{n_runs}"
+            n_pass, n_app = counts
+            label = ("✓" if n_pass == n_app else "✗") if n_app == 1 else f"{n_pass}/{n_app}"
         return (f'<td style="text-align:center;padding:4px;background:{bg};'
                 f'color:{fg};font-size:13px;font-weight:600;'
                 f'min-width:44px;border:1px solid #fff">{label}</td>')
@@ -245,7 +244,7 @@ def main() -> None:
         tid = tup["id"]
         t = tup["tuple"]
         label = f"{t['anomaly_type']} / {t['severity']} / {t['event_context']}"
-        cells = "".join(td_cell(cell_data[(tid, an)], n_runs) for an in assertion_names)
+        cells = "".join(td_cell(cell_data[(tid, an)]) for an in assertion_names)
         heatmap_rows_html += f"<tr>{td_label(label)}{cells}</tr>\n"
 
     # Assertion pass rate rows
@@ -270,34 +269,6 @@ def main() -> None:
         for an in assertion_names
     )
 
-    # Inputs config snapshot block
-    if inputs_meta:
-        acfg = inputs_meta.get("anomaly_config", {})
-        multiplier = inputs_meta.get("critical_zscore_multiplier", "—")
-        built_at = inputs_meta.get("built_at", "—")
-        n_tup = inputs_meta.get("n_tuples", "—")
-        cfg_rows = "".join(
-            f'<tr><td style="font-family:monospace;font-size:12px;padding:4px 12px;'
-            f'color:#374151;white-space:nowrap">{k}</td>'
-            f'<td style="font-size:12px;padding:4px 12px;color:#6b7280">{v}</td></tr>'
-            for k, v in acfg.items()
-        )
-        cfg_rows += (
-            f'<tr><td style="font-family:monospace;font-size:12px;padding:4px 12px;'
-            f'color:#374151">critical_zscore_multiplier</td>'
-            f'<td style="font-size:12px;padding:4px 12px;color:#6b7280">{multiplier}</td></tr>'
-        )
-        inputs_meta_html = f"""
-  <h2>Input Config Snapshot</h2>
-  <div class="card">
-    <p style="font-size:12px;color:#6b7280;margin-bottom:12px">
-      Built {built_at} &nbsp;·&nbsp; {n_tup} tuples &nbsp;·&nbsp;
-      Thresholds baked into <code>inputs.jsonl</code> at build time
-    </p>
-    <table style="width:auto"><tbody>{cfg_rows}</tbody></table>
-  </div>"""
-    else:
-        inputs_meta_html = ""
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -377,7 +348,6 @@ def main() -> None:
       <tbody>{assertion_rows_html}</tbody>
     </table>
   </div>
-  {inputs_meta_html}
 </body>
 </html>"""
 
