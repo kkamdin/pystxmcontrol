@@ -5,7 +5,7 @@ Shows a binary criteria matrix (heatmap) across all runs, with pass rates
 per assertion. Re-run whenever you want a fresh view.
 
 Usage:
-    .venv/bin/python evals/dispatch/report.py
+    .venv/bin/python evals/intelligence_agent/report.py
 """
 
 import json
@@ -275,7 +275,7 @@ def main() -> None:
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Dispatch Eval Report</title>
+  <title>Intelligence Agent Eval Report</title>
   <style>
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -294,7 +294,7 @@ def main() -> None:
   </style>
 </head>
 <body>
-  <h1>Intelligence Agent · Dispatch Eval</h1>
+  <h1>Intelligence Agent Evals</h1>
   <p class="subtitle">
     Assertion-based binary criteria matrix &nbsp;·&nbsp;
     ALS 7.0.1.2 STXM &nbsp;·&nbsp;

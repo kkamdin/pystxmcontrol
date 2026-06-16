@@ -1,6 +1,6 @@
-# Dispatch Evals
+# Intelligence Agent Evals
 
-Assertion-based evals for `AgentInterface.dispatch()` — the anomaly-triggered intelligence agent. Each test case is a tuple of (anomaly_type × severity × event_context), run through the real LLM, and scored against binary pass/fail criteria.
+Assertion-based evals for `AgentInterface` (`IntelligenceModule`) — the anomaly-triggered monitoring agent. Each test case is a tuple of (anomaly_type × severity × event_context), run through the real LLM via `dispatch()`, and scored against binary pass/fail criteria.
 
 ## How tuples work
 
@@ -31,8 +31,8 @@ Run each step from the repo root. All scripts use `.venv/bin/python`.
 Converts tuples → concrete `(anomaly, recent_events)` pairs. Re-run if you change `tuples.jsonl` or the config thresholds.
 
 ```bash
-.venv/bin/python evals/dispatch/build_inputs.py
-# → writes evals/dispatch/inputs.jsonl
+.venv/bin/python evals/intelligence_agent/build_inputs.py
+# → writes evals/intelligence_agent/inputs.jsonl
 ```
 
 ### Step 2 — Run the eval
@@ -42,9 +42,9 @@ Sends each input through the real LLM and records responses. Each run gets a uni
 Also writes a token summary and posts to `/cost/estimate` for a cost breakdown.
 
 ```bash
-.venv/bin/python evals/dispatch/run_eval.py
-# → appends to evals/dispatch/traces.jsonl
-# → appends to evals/dispatch/runs_meta.jsonl  (tokens + cost per run)
+.venv/bin/python evals/intelligence_agent/run_eval.py
+# → appends to evals/intelligence_agent/traces.jsonl
+# → appends to evals/intelligence_agent/runs_meta.jsonl  (tokens + cost per run)
 # → appends to <data_dir>/agent_traces_intelligence.jsonl  (production system log)
 ```
 
@@ -53,8 +53,8 @@ Also writes a token summary and posts to `/cost/estimate` for a cost breakdown.
 Scores the latest run against 7 binary criteria. Results are appended to `results.jsonl`. Prints a pass/fail table to the console.
 
 ```bash
-.venv/bin/python evals/dispatch/run_assertions.py
-# → appends to evals/dispatch/results.jsonl
+.venv/bin/python evals/intelligence_agent/run_assertions.py
+# → appends to evals/intelligence_agent/results.jsonl
 ```
 
 ### Step 4 — Generate the report
@@ -62,9 +62,9 @@ Scores the latest run against 7 binary criteria. Results are appended to `result
 Builds `report.html` from all accumulated results. Open it in a browser.
 
 ```bash
-.venv/bin/python evals/dispatch/report.py
-# → writes evals/dispatch/report.html
-open evals/dispatch/report.html
+.venv/bin/python evals/intelligence_agent/report.py
+# → writes evals/intelligence_agent/report.html
+open evals/intelligence_agent/report.html
 ```
 
 ## Output files

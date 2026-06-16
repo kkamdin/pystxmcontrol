@@ -1,5 +1,5 @@
 """
-Step 4: Convert dispatch() tuples into concrete synthetic inputs.
+Step 4: Convert tuples into concrete synthetic inputs for AgentInterface.dispatch().
 
 Reads tuples.jsonl, constructs a realistic (anomaly_dict, recent_events) pair
 for each tuple, and writes the results to inputs.jsonl.
@@ -9,7 +9,7 @@ Threshold values are read from config so generated values stay consistent
 with whatever is deployed.
 
 Usage:
-    .venv/bin/python evals/dispatch/build_inputs.py
+    .venv/bin/python evals/intelligence_agent/build_inputs.py
 """
 
 import json

@@ -13,7 +13,7 @@ Use the /cost/estimate endpoint — see report.py for display.
 Requires ANTHROPIC_API_KEY to be set and intelligence.agent.enabled = true in config.
 
 Usage:
-    .venv/bin/python evals/dispatch/run_eval.py
+    .venv/bin/python evals/intelligence_agent/run_eval.py
 """
 
 import json
@@ -167,7 +167,7 @@ def main() -> None:
     print(f"\nTraces    → {TRACES_PATH}")
     print(f"Runs meta → {RUNS_META_PATH}")
     print(f"System log → {config['intelligence']['agent']['trace_log']}")
-    print(f"\nNext: .venv/bin/python evals/dispatch/run_assertions.py")
+    print(f"\nNext: .venv/bin/python evals/intelligence_agent/run_assertions.py")
 
 
 if __name__ == "__main__":
