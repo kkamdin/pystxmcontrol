@@ -23,6 +23,7 @@ and ANTHROPIC_API_KEY env var):
 
 from collections import deque
 import asyncio
+import json
 import time
 import numpy as np
 from pystxmcontrol.utils.logger import get_logger
@@ -33,6 +34,8 @@ _DEFAULT_CHANNELS = {
     "events": 500,
     "metrics": 200,
 }
+
+_CRITICAL_ZSCORE_MULTIPLIER = 1.5  # z_score < -(threshold * this) → critical severity
 
 _SYSTEM_PROMPT = """\
 You are an expert scientist monitoring a scanning transmission X-ray microscopy \
@@ -158,7 +161,7 @@ class AnomalyDetector:
 
         pct_drop = (mu - line_mean) / mu if mu > 0 else 0.0
         if z < -self.zscore_threshold and pct_drop >= self.pct_threshold:
-            severity = "critical" if z < -self.zscore_threshold * 1.5 else "warn"
+            severity = "critical" if z < -self.zscore_threshold * _CRITICAL_ZSCORE_MULTIPLIER else "warn"
             return {
                 "type": "intensity_drop",
                 "severity": severity,
@@ -243,9 +246,46 @@ class AgentInterface:
         self._api_key_env = cfg.get("api_key_env", default_env)
         self._last_call_time = 0.0
         self._client = None
+        trace_log = cfg.get("trace_log", None)
+        if trace_log and not os.path.isabs(trace_log):
+            data_dir = main_config.get("server", {}).get("data_dir", "")
+            trace_log = os.path.join(data_dir, trace_log)
+        self._trace_log_path = trace_log
         api_key_present = bool(os.environ.get(self._api_key_env)) if self._api_key_env else False
-        logger.info("AgentInterface: provider=%s model=%s base_url=%s api_key_present=%s",
-                    self.provider, self.model, self.base_url, api_key_present)
+        self.context_window: int | None = None
+        self.input_cost_per_token: float | None = None
+        self.output_cost_per_token: float | None = None
+        self._fetch_model_info()
+        logger.info("AgentInterface: provider=%s model=%s base_url=%s api_key_present=%s "
+                    "trace_log=%s context_window=%s input_cost_per_token=%s output_cost_per_token=%s",
+                    self.provider, self.model, self.base_url, api_key_present,
+                    self._trace_log_path, self.context_window,
+                    self.input_cost_per_token, self.output_cost_per_token)
+
+    def _fetch_model_info(self) -> None:
+        """Query /model_group/info and populate context_window and cost-per-token attributes."""
+        import os
+        if not self.base_url:
+            return
+        api_key = os.environ.get(self._api_key_env) if self._api_key_env else None
+        if not api_key:
+            return
+        try:
+            import httpx
+            url = f"{self.base_url.rstrip('/')}/model_group/info"
+            r = httpx.get(url, params={"model_group": self.model},
+                          headers={"Authorization": f"Bearer {api_key}"}, timeout=5.0)
+            r.raise_for_status()
+            data = r.json()
+            entries = data.get("data") or []
+            if entries:
+                data = entries[0]
+            max_in = int(data.get("max_input_tokens") or 0)
+            self.context_window = max_in or None
+            self.input_cost_per_token = data.get("input_cost_per_token") or None
+            self.output_cost_per_token = data.get("output_cost_per_token") or None
+        except Exception as exc:
+            logger.warning("AgentInterface: could not fetch model info: %s", exc)
 
     def _get_client(self):
         import os
@@ -269,6 +309,15 @@ class AgentInterface:
             self._client = openai.OpenAI(**kwargs)
         return self._client
 
+    def _log_trace(self, entry: dict) -> None:
+        if not self._trace_log_path:
+            return
+        try:
+            with open(self._trace_log_path, "a") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception as exc:
+            logger.warning("AgentInterface: failed to write trace log: %s", exc)
+
     def in_cooldown(self) -> bool:
         return time.time() - self._last_call_time < self.cooldown_seconds
 
@@ -285,12 +334,42 @@ class AgentInterface:
 
         prompt = self._format_prompt(anomaly, recent_events)
         loop = asyncio.get_event_loop()
+        error = None
+        # None until the API responds — stays None on failure so the trace doesn't log
+        # misleading zeros for a call that never completed.
+        usage = {"input_tokens": None, "output_tokens": None}
         try:
-            text = await loop.run_in_executor(None, self._call_api, prompt)
-            logger.info("AgentInterface.dispatch: received response (%d chars)", len(text))
+            text, usage = await loop.run_in_executor(None, self._call_api, prompt)
+            logger.info("AgentInterface.dispatch: received response (%d chars) "
+                        "tokens in=%d out=%d", len(text),
+                        usage["input_tokens"], usage["output_tokens"])
         except Exception as exc:
             logger.warning("AgentInterface.dispatch: API call failed: %s", exc, exc_info=True)
             text = f"[Agent unavailable: {exc}]"
+            error = str(exc)
+
+        # context_window is populated by _fetch_model_info() which queries the CBORG/LiteLLM
+        # /model_group/info endpoint — it will be None for direct Anthropic/OpenAI providers.
+        # Only compute fill on success; an error trace should show null, not a spurious 0.0%.
+        context_fill_pct = (
+            round(usage["input_tokens"] / self.context_window * 100, 2)
+            if self.context_window and error is None else None
+        )
+        self._log_trace({
+            "call_type": "dispatch",
+            "timestamp": time.time(),
+            "model": self.model,
+            "system_prompt": _SYSTEM_PROMPT,
+            "prompt": prompt,
+            "response": text,
+            "anomaly_type": anomaly.get("type"),
+            "severity": anomaly.get("severity"),
+            "input_tokens": usage["input_tokens"],
+            "output_tokens": usage["output_tokens"],
+            "context_window": self.context_window,
+            "context_fill_pct": context_fill_pct,
+            "error": error,
+        })
 
         suggestion = {
             "type": "intelligence_suggestion",
@@ -308,7 +387,8 @@ class AgentInterface:
 
         return suggestion
 
-    def _call_api(self, prompt: str) -> str:
+    def _call_api(self, prompt: str) -> tuple[str, dict]:
+        """Returns (response_text, usage) where usage has input_tokens and output_tokens."""
         client = self._get_client()
         if self.provider == "anthropic":
             msg = client.messages.create(
@@ -317,7 +397,9 @@ class AgentInterface:
                 system=_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": prompt}],
             )
-            return msg.content[0].text
+            usage = {"input_tokens": msg.usage.input_tokens,
+                     "output_tokens": msg.usage.output_tokens}
+            return msg.content[0].text, usage
         else:
             msg = client.chat.completions.create(
                 model=self.model,
@@ -327,7 +409,9 @@ class AgentInterface:
                     {"role": "user",   "content": prompt},
                 ],
             )
-            return msg.choices[0].message.content
+            usage = {"input_tokens": msg.usage.prompt_tokens,
+                     "output_tokens": msg.usage.completion_tokens}
+            return msg.choices[0].message.content, usage
 
     async def query(self, text: str, recent_events: list,
                     publish_fn=None) -> dict | None:
@@ -335,12 +419,41 @@ class AgentInterface:
         logger.info("AgentInterface.query: received query (%d chars)", len(text))
         prompt = self._format_query_prompt(text, recent_events)
         loop = asyncio.get_event_loop()
+        error = None
+        # None until the API responds — stays None on failure so the trace doesn't log
+        # misleading zeros for a call that never completed.
+        usage = {"input_tokens": None, "output_tokens": None}
         try:
-            response_text = await loop.run_in_executor(None, self._call_api, prompt)
-            logger.info("AgentInterface.query: received response (%d chars)", len(response_text))
+            response_text, usage = await loop.run_in_executor(None, self._call_api, prompt)
+            logger.info("AgentInterface.query: received response (%d chars) "
+                        "tokens in=%d out=%d", len(response_text),
+                        usage["input_tokens"], usage["output_tokens"])
         except Exception as exc:
             logger.warning("AgentInterface.query: API call failed: %s", exc, exc_info=True)
             response_text = f"[Agent unavailable: {exc}]"
+            error = str(exc)
+
+        # context_window is populated by _fetch_model_info() which queries the CBORG/LiteLLM
+        # /model_group/info endpoint — it will be None for direct Anthropic/OpenAI providers.
+        # Only compute fill on success; an error trace should show null, not a spurious 0.0%.
+        context_fill_pct = (
+            round(usage["input_tokens"] / self.context_window * 100, 2)
+            if self.context_window and error is None else None
+        )
+        self._log_trace({
+            "call_type": "query",
+            "timestamp": time.time(),
+            "model": self.model,
+            "system_prompt": _SYSTEM_PROMPT,
+            "prompt": prompt,
+            "response": response_text,
+            "query": text,
+            "input_tokens": usage["input_tokens"],
+            "output_tokens": usage["output_tokens"],
+            "context_window": self.context_window,
+            "context_fill_pct": context_fill_pct,
+            "error": error,
+        })
 
         result = {
             "type": "intelligence_suggestion",
