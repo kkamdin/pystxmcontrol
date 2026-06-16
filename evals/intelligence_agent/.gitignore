@@ -1,0 +1,14 @@
+# Generated pipeline artifacts
+inputs.jsonl
+inputs_meta.json
+traces.jsonl
+runs_meta.jsonl
+results.jsonl
+report.html
+
+# Analysis run data and environment
+analysis/traces.jsonl
+analysis/runs_meta.jsonl
+analysis/results.jsonl
+analysis/.venv/
+analysis/.ipynb_checkpoints/
