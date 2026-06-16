@@ -25,7 +25,7 @@ from pystxmcontrol.controller.intelligence import (
     AnomalyDetector,
 )
 
-CONFIG_PATH = REPO_ROOT / ".venv/pystxmcontrol_cfg/main.json"
+CONFIG_PATH = Path(sys.prefix) / "pystxmcontrol_cfg/main.json"
 TUPLES_PATH = Path(__file__).parent / "tuples.jsonl"
 INPUTS_PATH = Path(__file__).parent / "inputs.jsonl"
 INPUTS_META_PATH = Path(__file__).parent / "inputs_meta.json"

@@ -19,8 +19,13 @@ Each tuple in `tuples.jsonl` defines one test case as a combination of three dim
 export ANTHROPIC_API_KEY=<your-key>   # provider: "anthropic" (or cborg with base_url)
 export OPENAI_API_KEY=<your-key>      # provider: "openai" (or any compatible endpoint)
 
-# intelligence.agent.enabled must be true in your config
-# (.venv/pystxmcontrol_cfg/main.json)
+# intelligence.agent.enabled must be true in your config.
+# The scripts resolve the config via sys.prefix — activating the right
+# environment is enough. The config lives at:
+#   .venv/pystxmcontrol_cfg/main.json          (venv)
+#   ~/conda/envs/<your-env>/pystxmcontrol_cfg/main.json  (conda)
+# Note: this is the installed config in your environment, not the
+# main.json in the repo source tree.
 ```
 
 ## Running the pipeline

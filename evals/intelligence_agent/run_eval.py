@@ -27,7 +27,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from pystxmcontrol.controller.intelligence import AgentInterface, _SYSTEM_PROMPT
 
-CONFIG_PATH = REPO_ROOT / ".venv/pystxmcontrol_cfg/main.json"
+CONFIG_PATH = Path(sys.prefix) / "pystxmcontrol_cfg/main.json"
 INPUTS_PATH = Path(__file__).parent / "inputs.jsonl"
 INPUTS_META_PATH = Path(__file__).parent / "inputs_meta.json"
 TRACES_PATH = Path(__file__).parent / "traces.jsonl"
