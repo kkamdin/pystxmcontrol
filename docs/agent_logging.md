@@ -44,9 +44,9 @@ One entry is written per API call (both anomaly dispatches and direct queries):
 - `system_prompt`, `prompt`, `response` — full text of the system prompt, user prompt, and model response
 - `anomaly_type`, `severity` — (dispatch only) the triggering anomaly details
 - `query` — (query only) the original user query text
-- `input_tokens`, `output_tokens` — token counts from the API response
-- `context_window` — model's max context size (fetched at startup)
-- `context_fill_pct` — what fraction of the context window was used
+- `input_tokens`, `output_tokens` — token counts from the API response; `null` if the call failed
+- `context_window` — model's max context size; only populated when using a CBORG/LiteLLM endpoint, `null` otherwise
+- `context_fill_pct` — percentage of the context window used by the input; `null` if the call failed or `context_window` is unavailable
 - `error` — exception message if the API call failed, otherwise `null`
 
 ### Task agent (`task_agent.trace_log`)
@@ -61,3 +61,4 @@ One entry is written per `run()` call (i.e. per user goal):
 - `total_iterations` — number of tool-use steps taken
 - `stop_reason` — why the run ended (`"done"`, `"max_iterations"`, `"cancelled"`, etc.)
 - `response` — the agent's final text response
+- `input_tokens`, `output_tokens` — token counts summed across all LLM calls in the run; sourced from the OpenAI-compatible API fields (`prompt_tokens`/`completion_tokens`) used by CBORG and other OpenAI-compatible endpoints
