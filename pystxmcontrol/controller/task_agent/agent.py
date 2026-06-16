@@ -223,6 +223,11 @@ class TaskAgent:
         start_time = time.time()
         final_response = ""
         stop_reason = "unknown"
+        # Accumulated across all LLM calls in this run. Sourced from
+        # response.usage.prompt_tokens/completion_tokens (OpenAI-compatible field names,
+        # used by CBORG and other OpenAI-compatible endpoints).
+        total_input_tokens = 0
+        total_output_tokens = 0
 
         while True:
             if self._cancel_event.is_set():
@@ -255,6 +260,10 @@ class TaskAgent:
                 _publish(final_response)
                 stop_reason = "llm_error"
                 break
+
+            if response.usage:
+                total_input_tokens += response.usage.prompt_tokens or 0
+                total_output_tokens += response.usage.completion_tokens or 0
 
             choice = response.choices[0]
             finish_reason = choice.finish_reason
@@ -310,5 +319,11 @@ class TaskAgent:
             "total_iterations": total,
             "stop_reason": stop_reason,
             "response": final_response,
+            # Token counts summed across all LLM calls in this run. Sourced from
+            # response.usage.prompt_tokens/completion_tokens (OpenAI-compatible field names,
+            # used by CBORG and other OpenAI-compatible endpoints); 0 only if every call
+            # lacked a usage object.
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
         })
         return final_response

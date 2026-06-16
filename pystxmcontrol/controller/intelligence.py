@@ -335,7 +335,9 @@ class AgentInterface:
         prompt = self._format_prompt(anomaly, recent_events)
         loop = asyncio.get_event_loop()
         error = None
-        usage = {"input_tokens": 0, "output_tokens": 0}
+        # None until the API responds — stays None on failure so the trace doesn't log
+        # misleading zeros for a call that never completed.
+        usage = {"input_tokens": None, "output_tokens": None}
         try:
             text, usage = await loop.run_in_executor(None, self._call_api, prompt)
             logger.info("AgentInterface.dispatch: received response (%d chars) "
@@ -346,9 +348,12 @@ class AgentInterface:
             text = f"[Agent unavailable: {exc}]"
             error = str(exc)
 
+        # context_window is populated by _fetch_model_info() which queries the CBORG/LiteLLM
+        # /model_group/info endpoint — it will be None for direct Anthropic/OpenAI providers.
+        # Only compute fill on success; an error trace should show null, not a spurious 0.0%.
         context_fill_pct = (
             round(usage["input_tokens"] / self.context_window * 100, 2)
-            if self.context_window else None
+            if self.context_window and error is None else None
         )
         self._log_trace({
             "call_type": "dispatch",
@@ -415,7 +420,9 @@ class AgentInterface:
         prompt = self._format_query_prompt(text, recent_events)
         loop = asyncio.get_event_loop()
         error = None
-        usage = {"input_tokens": 0, "output_tokens": 0}
+        # None until the API responds — stays None on failure so the trace doesn't log
+        # misleading zeros for a call that never completed.
+        usage = {"input_tokens": None, "output_tokens": None}
         try:
             response_text, usage = await loop.run_in_executor(None, self._call_api, prompt)
             logger.info("AgentInterface.query: received response (%d chars) "
@@ -426,9 +433,12 @@ class AgentInterface:
             response_text = f"[Agent unavailable: {exc}]"
             error = str(exc)
 
+        # context_window is populated by _fetch_model_info() which queries the CBORG/LiteLLM
+        # /model_group/info endpoint — it will be None for direct Anthropic/OpenAI providers.
+        # Only compute fill on success; an error trace should show null, not a spurious 0.0%.
         context_fill_pct = (
             round(usage["input_tokens"] / self.context_window * 100, 2)
-            if self.context_window else None
+            if self.context_window and error is None else None
         )
         self._log_trace({
             "call_type": "query",
