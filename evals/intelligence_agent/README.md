@@ -15,8 +15,9 @@ Each tuple in `tuples.jsonl` defines one test case as a combination of three dim
 ## Prerequisites
 
 ```bash
-# ANTHROPIC_API_KEY must be set (same key works for cborg)
-export ANTHROPIC_API_KEY=<your-key>
+# Set the API key for whichever provider is configured in intelligence.agent.provider:
+export ANTHROPIC_API_KEY=<your-key>   # provider: "anthropic" (or cborg with base_url)
+export OPENAI_API_KEY=<your-key>      # provider: "openai" (or any compatible endpoint)
 
 # intelligence.agent.enabled must be true in your config
 # (.venv/pystxmcontrol_cfg/main.json)
@@ -24,7 +25,13 @@ export ANTHROPIC_API_KEY=<your-key>
 
 ## Running the pipeline
 
-Run each step from the repo root. All scripts use `.venv/bin/python`.
+Run each step from the repo root. Activate your environment first, then use `python`:
+
+```bash
+source .venv/bin/activate        # venv
+# or
+conda activate <your-env>        # conda
+```
 
 ### Step 1 — Build synthetic inputs
 

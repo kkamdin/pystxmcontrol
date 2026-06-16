@@ -10,7 +10,8 @@ Also calls _log_trace() so each run appears in the production system log
 Token counts and estimated cost are written to runs_meta.jsonl after each run.
 Use the /cost/estimate endpoint — see report.py for display.
 
-Requires ANTHROPIC_API_KEY to be set and intelligence.agent.enabled = true in config.
+Requires the appropriate API key env var to be set (ANTHROPIC_API_KEY or OPENAI_API_KEY,
+depending on intelligence.agent.provider in config) and intelligence.agent.enabled = true.
 
 Usage:
     .venv/bin/python evals/intelligence_agent/run_eval.py
