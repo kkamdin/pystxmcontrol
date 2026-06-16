@@ -22,9 +22,6 @@ import sys
 import time
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).parents[2]
-sys.path.insert(0, str(REPO_ROOT))
-
 from pystxmcontrol.controller.intelligence import AgentInterface, _SYSTEM_PROMPT
 
 CONFIG_PATH = Path(sys.prefix) / "pystxmcontrol_cfg/main.json"
