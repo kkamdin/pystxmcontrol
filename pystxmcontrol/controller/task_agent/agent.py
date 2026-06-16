@@ -137,7 +137,11 @@ class TaskAgent:
         self.max_iterations = cfg.get("max_iterations", 20)
         # Absolute ceiling across the whole run, regardless of progress (final safety net).
         self.max_total_iterations = cfg.get("max_total_iterations", 200)
-        self._trace_log_path = cfg.get("trace_log", None)
+        trace_log = cfg.get("trace_log", None)
+        if trace_log and not os.path.isabs(trace_log):
+            data_dir = main_config.get("server", {}).get("data_dir", "")
+            trace_log = os.path.join(data_dir, trace_log)
+        self._trace_log_path = trace_log
         self._toolset = ToolSet(client, image_model=image_model)
         self._cancel_event = threading.Event()
         self._messages: list[dict] = []  # persists across run() calls

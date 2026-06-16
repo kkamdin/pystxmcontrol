@@ -246,7 +246,11 @@ class AgentInterface:
         self._api_key_env = cfg.get("api_key_env", default_env)
         self._last_call_time = 0.0
         self._client = None
-        self._trace_log_path = cfg.get("trace_log", None)
+        trace_log = cfg.get("trace_log", None)
+        if trace_log and not os.path.isabs(trace_log):
+            data_dir = main_config.get("server", {}).get("data_dir", "")
+            trace_log = os.path.join(data_dir, trace_log)
+        self._trace_log_path = trace_log
         api_key_present = bool(os.environ.get(self._api_key_env)) if self._api_key_env else False
         self.context_window: int | None = None
         self.input_cost_per_token: float | None = None
