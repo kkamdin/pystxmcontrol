@@ -1,0 +1,20 @@
+{"id": 1, "anomaly_type": "intensity_drop", "severity": "critical", "event_context": "empty", "notes": "Baseline: no context at all"}
+{"id": 2, "anomaly_type": "intensity_drop", "severity": "critical", "event_context": "relevant", "notes": "Shutter closed just before drop"}
+{"id": 3, "anomaly_type": "intensity_drop", "severity": "warn", "event_context": "scan_lifecycle_only", "notes": "No clues available"}
+{"id": 4, "anomaly_type": "intensity_drop", "severity": "critical", "event_context": "misleading", "notes": "Unrelated motor moved; shutter fine"}
+{"id": 5, "anomaly_type": "intensity_drop", "severity": "warn", "event_context": "relevant", "notes": "Shutter mode changed to auto recently"}
+{"id": 6, "anomaly_type": "intensity_drift", "severity": "warn", "event_context": "empty", "notes": "Baseline: no context"}
+{"id": 7, "anomaly_type": "intensity_drift", "severity": "warn", "event_context": "relevant", "notes": "Energy motor moved recently"}
+{"id": 8, "anomaly_type": "intensity_drift", "severity": "critical", "event_context": "scan_lifecycle_only", "notes": "No clues available"}
+{"id": 9, "anomaly_type": "intensity_drift", "severity": "warn", "event_context": "relevant", "notes": "DAQ timeout events present"}
+{"id": 10, "anomaly_type": "intensity_drift", "severity": "critical", "event_context": "misleading", "notes": "Motor move + shutter auto — ambiguous cause"}
+{"id": 11, "anomaly_type": "focus_decline", "severity": "warn", "event_context": "empty", "notes": "Baseline: no context"}
+{"id": 12, "anomaly_type": "focus_decline", "severity": "warn", "event_context": "relevant", "notes": "ZonePlateZ moved recently"}
+{"id": 13, "anomaly_type": "focus_decline", "severity": "critical", "event_context": "scan_lifecycle_only", "notes": "No clues available"}
+{"id": 14, "anomaly_type": "focus_decline", "severity": "warn", "event_context": "relevant", "notes": "SampleZ moved recently"}
+{"id": 15, "anomaly_type": "focus_decline", "severity": "critical", "event_context": "misleading", "notes": "Energy changed — shifts focal length in zone-plate systems (f proportional to 1/E); naive diagnosis might miss the coupling"}
+{"id": 16, "anomaly_type": "intensity_drop", "severity": "critical", "event_context": "relevant", "notes": "Shutter closed + scan paused/resumed sequence"}
+{"id": 17, "anomaly_type": "intensity_drift", "severity": "warn", "event_context": "relevant", "notes": "Multiple regions complete; gradual drift throughout"}
+{"id": 18, "anomaly_type": "focus_decline", "severity": "warn", "event_context": "scan_lifecycle_only", "notes": "Region complete, no motor moves — unexplained"}
+{"id": 19, "anomaly_type": "intensity_drop", "severity": "warn", "event_context": "relevant", "notes": "Scan cancelled then restarted"}
+{"id": 20, "anomaly_type": "focus_decline", "severity": "critical", "event_context": "misleading", "notes": "Both ZonePlateZ and SampleZ moved — ambiguous which caused it"}
