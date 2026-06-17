@@ -244,6 +244,7 @@ class AgentInterface:
         self.base_url = cfg.get("base_url", None)
         default_env = self._PROVIDER_DEFAULT_ENV.get(self.provider, "OPENAI_API_KEY")
         self._api_key_env = cfg.get("api_key_env", default_env)
+        self.max_tokens = cfg.get("max_tokens", 256)
         self._last_call_time = 0.0
         self._client = None
         trace_log = cfg.get("trace_log", None)
@@ -257,9 +258,9 @@ class AgentInterface:
         self.output_cost_per_token: float | None = None
         self._fetch_model_info()
         logger.info("AgentInterface: provider=%s model=%s base_url=%s api_key_present=%s "
-                    "trace_log=%s context_window=%s input_cost_per_token=%s output_cost_per_token=%s",
+                    "max_tokens=%s trace_log=%s context_window=%s input_cost_per_token=%s output_cost_per_token=%s",
                     self.provider, self.model, self.base_url, api_key_present,
-                    self._trace_log_path, self.context_window,
+                    self.max_tokens, self._trace_log_path, self.context_window,
                     self.input_cost_per_token, self.output_cost_per_token)
 
     def _fetch_model_info(self) -> None:
@@ -393,7 +394,7 @@ class AgentInterface:
         if self.provider == "anthropic":
             msg = client.messages.create(
                 model=self.model,
-                max_tokens=256,
+                max_tokens=self.max_tokens,
                 system=_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": prompt}],
             )
@@ -403,7 +404,7 @@ class AgentInterface:
         else:
             msg = client.chat.completions.create(
                 model=self.model,
-                max_tokens=256,
+                max_tokens=self.max_tokens,
                 messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
                     {"role": "user",   "content": prompt},
