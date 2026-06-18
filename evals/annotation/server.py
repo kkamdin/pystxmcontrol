@@ -1,20 +1,37 @@
 #!/usr/bin/env python3
-"""Annotation server for STXM intelligence agent eval traces.
+"""Annotation server for STXM eval traces.
 
 Usage:
-    python server.py           # starts on http://localhost:7777
-    python server.py 8080      # custom port
+    python server.py                                    # intelligence_agent, port 7777
+    python server.py --eval-dir task_agent              # task_agent evals
+    python server.py --eval-dir task_agent --port 7778  # custom port
 """
 
+import argparse
 import json
-import sys
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
 BASE_DIR = Path(__file__).parent
-EVALS_DIR = BASE_DIR.parent / "intelligence_agent"
-LABELS_FILE = BASE_DIR / "labels.json"
+
+
+def parse_args():
+    p = argparse.ArgumentParser(description="STXM Annotation Server")
+    p.add_argument(
+        "--eval-dir",
+        default="intelligence_agent",
+        help="Eval directory name under evals/ (default: intelligence_agent)",
+    )
+    p.add_argument("--port", type=int, default=7777, help="Port to serve on (default: 7777)")
+    return p.parse_args()
+
+
+args = parse_args()
+
+eval_path = Path(args.eval_dir)
+EVALS_DIR = eval_path if eval_path.is_absolute() else BASE_DIR.parent / eval_path
+LABELS_FILE = EVALS_DIR / "labels.json"
 
 
 def load_data():
@@ -81,7 +98,11 @@ class Handler(BaseHTTPRequestHandler):
             data = {}
             if LABELS_FILE.exists():
                 with open(LABELS_FILE) as f:
-                    data = json.load(f)
+                    for line in f:
+                        if line.strip():
+                            entry = json.loads(line)
+                            key = entry.pop("key")
+                            data[key] = entry
             self.send_json(data)
 
         else:
@@ -110,8 +131,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 7777
-    print(f"STXM Annotation  →  http://localhost:{port}", flush=True)
-    print(f"  Traces : {EVALS_DIR / 'traces.jsonl'}", flush=True)
-    print(f"  Labels : {LABELS_FILE}", flush=True)
-    HTTPServer(("localhost", port), Handler).serve_forever()
+    print(f"STXM Annotation  →  http://localhost:{args.port}", flush=True)
+    print(f"  Eval dir : {EVALS_DIR}", flush=True)
+    print(f"  Traces   : {EVALS_DIR / 'traces.jsonl'}", flush=True)
+    print(f"  Labels   : {LABELS_FILE}", flush=True)
+    HTTPServer(("localhost", args.port), Handler).serve_forever()

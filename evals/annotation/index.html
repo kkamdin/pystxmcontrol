@@ -344,7 +344,6 @@ details.sys-prompt[open] > summary::before { transform: rotate(90deg); }
 .assert-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: repeat(4, auto);
   grid-auto-flow: column;
   gap: 3px 20px;
 }
@@ -594,16 +593,17 @@ details.sys-prompt[open] > summary::before { transform: rotate(90deg); }
 <script>
 'use strict';
 
-// ── Assertion definitions ─────────────────────────────────
-const ASSERTIONS = [
-  { key: 'no_error',                label: 'No error' },
-  { key: 'on_topic',                label: 'On topic' },
-  { key: 'has_action',              label: 'Has action' },
-  { key: 'critical_urgent',         label: 'Urgent tone' },
-  { key: 'uses_shutter_context',    label: 'Shutter ctx' },
-  { key: 'uses_zone_plate_context', label: 'Zone plate ctx' },
-  { key: 'uses_energy_context',     label: 'Energy ctx' },
-];
+// ── Assertion definitions (populated dynamically from loaded traces) ──────────
+let ASSERTIONS = [];
+
+function populateAssertions() {
+  const seen = new Set();
+  allTraces.forEach(t => Object.keys(t.assertions || {}).forEach(k => seen.add(k)));
+  ASSERTIONS = [...seen].sort().map(k => ({
+    key: k,
+    label: k.replace(/_/g, ' '),
+  }));
+}
 
 // ── State ─────────────────────────────────────────────────
 let allTraces = [];
@@ -620,6 +620,7 @@ async function init() {
     const [tRes, lRes] = await Promise.all([fetch('/api/traces'), fetch('/api/labels')]);
     allTraces = await tRes.json();
     labels = await lRes.json();
+    populateAssertions();
     populateTupleFilter();
     applyFilter();
   } catch (e) {
@@ -868,7 +869,9 @@ function refreshAnnotationUI() {
 // ── Assertion grid in footer ──────────────────────────────
 function renderAssertGrid(trace) {
   const autoA = trace.assertions || {};
-  document.getElementById('assert-grid').innerHTML = ASSERTIONS.map(a => {
+  const grid = document.getElementById('assert-grid');
+  grid.style.gridTemplateRows = `repeat(${Math.ceil(ASSERTIONS.length / 2)}, auto)`;
+  grid.innerHTML = ASSERTIONS.map(a => {
     const av = autoA[a.key];
     const [apCls, apTxt] =
       av === true  ? ['ap-true',  'auto:✓'] :
@@ -992,13 +995,8 @@ function renderSidebar(t) {
 }
 
 function renderRefAssertions(assertions) {
-  const NAMES = {
-    no_error:'No error', on_topic:'On topic', has_action:'Has action',
-    critical_urgent:'Urgent tone', uses_shutter_context:'Shutter ctx',
-    uses_zone_plate_context:'Zone plate ctx', uses_energy_context:'Energy ctx',
-  };
   return '<div class="ref-assert-grid">' +
-    Object.entries(NAMES).map(([k, label]) => {
+    ASSERTIONS.map(({ key: k, label }) => {
       const v = assertions[k];
       const cls = v === true ? 'auto-true' : v === false ? 'auto-false' : 'auto-null';
       const icon = v === true ? '✓' : v === false ? '✗' : '–';
