@@ -98,11 +98,7 @@ class Handler(BaseHTTPRequestHandler):
             data = {}
             if LABELS_FILE.exists():
                 with open(LABELS_FILE) as f:
-                    for line in f:
-                        if line.strip():
-                            entry = json.loads(line)
-                            key = entry.pop("key")
-                            data[key] = entry
+                    data = json.load(f)
             self.send_json(data)
 
         else:
