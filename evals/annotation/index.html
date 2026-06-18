@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STXM Anomaly Annotation</title>
+<style>
+:root {
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --text: #1e293b;
+  --muted: #64748b;
+  --header-bg: #0f172a;
+
+  --critical: #ef4444;
+  --warn: #f59e0b;
+
+  --intensity-drop: #3b82f6;
+  --intensity-drift: #8b5cf6;
+  --focus-decline: #06b6d4;
+
+  --pass: #10b981;
+  --fail: #ef4444;
+  --defer: #f59e0b;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Top bar ─────────────────────────────────────────────── */
+#topbar {
+  background: var(--header-bg);
+  color: #f1f5f9;
+  padding: 0 16px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; color: #e2e8f0; }
+.title span { color: #06b6d4; }
+
+.progress-info { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #94a3b8; white-space: nowrap; }
+
+#trace-counter {
+  background: rgba(255,255,255,0.1);
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: #e2e8f0;
+}
+
+.filter-row { display: flex; align-items: center; gap: 6px; flex: 1; justify-content: center; }
+
+.filter-row select {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #e2e8f0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.filter-row select option { background: #1e293b; }
+
+.nav-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+.nav-controls button {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #e2e8f0;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.nav-controls button:hover { background: rgba(255,255,255,0.2); }
+.nav-controls button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+#jump-input {
+  width: 64px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #e2e8f0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* ── Main layout ─────────────────────────────────────────── */
+#main { display: flex; flex: 1; overflow: hidden; }
+
+#sidebar {
+  width: 290px;
+  min-width: 260px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+#content { flex: 1; overflow-y: auto; padding: 20px 24px; }
+
+/* ── Sidebar sections ────────────────────────────────────── */
+.section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+
+.section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+/* ── Badges ──────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: white;
+}
+
+.badge-critical           { background: var(--critical); }
+.badge-warn               { background: var(--warn); color: #1e293b; }
+.badge-intensity_drop     { background: var(--intensity-drop); }
+.badge-intensity_drift    { background: var(--intensity-drift); }
+.badge-focus_decline      { background: #06b6d4; }
+.badge-empty              { background: #6b7280; }
+.badge-relevant           { background: #10b981; }
+.badge-scan_lifecycle_only{ background: #3b82f6; }
+.badge-misleading         { background: #f97316; }
+.badge-claude-haiku-4-5   { background: #d97706; }
+.badge-gemini-2-0-flash   { background: #4285f4; }
+.badge-gemini-2-5-flash   { background: #0f9d58; }
+
+/* ── Signal metrics ──────────────────────────────────────── */
+.metric-bar-container { margin: 4px 0 8px; }
+
+.metric-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 11px; }
+.metric-bar-label { width: 60px; color: var(--muted); flex-shrink: 0; }
+.metric-bar-value { width: 52px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; flex-shrink: 0; }
+
+.bar-track { flex: 1; height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
+.bar-fill  { height: 100%; border-radius: 4px; transition: width 0.3s ease; }
+.bar-baseline { background: #94a3b8; }
+.bar-critical { background: var(--critical); }
+.bar-warn     { background: var(--warn); }
+
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.chip {
+  background: #f1f5f9;
+  border-radius: 8px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.chip strong { color: var(--text); }
+
+/* ── Event timeline ──────────────────────────────────────── */
+.event-list { list-style: none; }
+
+.event-item {
+  display: flex;
+  gap: 8px;
+  padding: 5px 0 5px 12px;
+  border-left: 2px solid var(--border);
+  margin-left: 6px;
+  position: relative;
+}
+
+.event-item::before {
+  content: '';
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  position: absolute;
+  left: -5px; top: 8px;
+  background: var(--border);
+  border: 2px solid white;
+}
+
+.event-item.scan_start::before      { background: #10b981; }
+.event-item.scan_paused::before     { background: #f59e0b; }
+.event-item.scan_resumed::before    { background: #10b981; }
+.event-item.scan_cancelled::before  { background: #ef4444; }
+.event-item.shutter_changed::before { background: #3b82f6; }
+.event-item.region_complete::before { background: #06b6d4; }
+.event-item.motor_moved::before     { background: #8b5cf6; }
+.event-item.daq_timeout::before     { background: #ef4444; }
+
+.event-time { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; min-width: 42px; padding-top: 2px; }
+.event-desc { font-size: 12px; line-height: 1.4; }
+.event-detail { font-size: 11px; color: var(--muted); margin-top: 1px; }
+.no-events { font-size: 12px; color: var(--muted); font-style: italic; }
+
+/* ── Sidebar assertion rows (read-only reference) ────────── */
+.ref-assert-grid { display: flex; flex-direction: column; gap: 5px; }
+
+.ref-assert-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+
+.auto-dot {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 8px; font-weight: 800;
+  flex-shrink: 0;
+}
+
+.auto-true  { background: #10b981; color: white; }
+.auto-false { background: #ef4444; color: white; }
+.auto-null  { background: #e2e8f0; color: #94a3b8; }
+
+.ref-name { flex: 1; }
+
+/* Human badge in sidebar (shown when human value is set) */
+.human-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+}
+.hb-true  { background: #d1fae5; color: #065f46; }
+.hb-false { background: #fee2e2; color: #991b1b; }
+.hb-na    { background: #f1f5f9; color: #6b7280; }
+.hb-diff  { outline: 2px solid #f59e0b; }
+
+/* ── Current label indicator ─────────────────────────────── */
+.label-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 8px;
+}
+.li-pass  { background: #d1fae5; color: #065f46; }
+.li-fail  { background: #fee2e2; color: #991b1b; }
+.li-defer { background: #fef3c7; color: #92400e; }
+
+/* ── Content blocks (right panel) ────────────────────────── */
+.content-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+}
+
+.block-label { font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
+.block-body { padding: 16px; }
+
+details.sys-prompt > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 10px 16px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f8fafc;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+details.sys-prompt > summary::-webkit-details-marker { display: none; }
+details.sys-prompt > summary::before { content: '▶'; font-size: 9px; transition: transform 0.15s; color: #94a3b8; }
+details.sys-prompt[open] > summary::before { transform: rotate(90deg); }
+
+.sys-content { padding: 12px 16px; font-size: 12px; color: #475569; line-height: 1.65; background: #fafafa; border-bottom: 1px solid var(--border); }
+
+.prompt-text { font-family: 'Menlo', 'Monaco', monospace; font-size: 12px; line-height: 1.65; white-space: pre-wrap; background: #f8fafc; border-radius: 6px; padding: 12px; color: #374151; }
+
+.error-banner { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; color: #dc2626; font-size: 13px; }
+
+.md { font-size: 14px; line-height: 1.7; color: var(--text); }
+.md h1, .md h2, .md h3 { margin: 16px 0 8px; font-weight: 700; color: #0f172a; line-height: 1.3; }
+.md h1 { font-size: 18px; } .md h2 { font-size: 16px; } .md h3 { font-size: 14px; }
+.md p { margin: 8px 0; }
+.md ul, .md ol { margin: 8px 0; padding-left: 22px; } .md li { margin: 4px 0; }
+.md strong { font-weight: 700; color: #0f172a; }
+.md code { font-family: monospace; background: #f1f5f9; padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+.md pre { background: #f8fafc; border: 1px solid var(--border); padding: 12px; border-radius: 6px; overflow-x: auto; margin: 10px 0; }
+.md pre code { background: transparent; padding: 0; }
+
+/* ── Annotation bar ──────────────────────────────────────── */
+#annotation-bar {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-top: 2px solid var(--border);
+}
+
+/* Left: human assertion corrections */
+.assert-panel {
+  padding: 8px 14px 10px;
+  border-right: 1px solid var(--border);
+  flex: 0 0 33.333%;
+}
+
+.assert-panel-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.assert-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: repeat(4, auto);
+  grid-auto-flow: column;
+  gap: 3px 20px;
+}
+
+.assert-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+}
+
+.arow-label {
+  font-size: 11px;
+  color: var(--text);
+  width: 74px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Segmented 3-state control */
+.seg-group {
+  display: inline-flex;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.seg-btn {
+  width: 22px;
+  height: 20px;
+  border: none;
+  border-right: 1px solid #d1d5db;
+  background: #f9fafb;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+  color: #9ca3af;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, color 0.1s;
+  line-height: 1;
+}
+
+.seg-btn:last-child { border-right: none; }
+.seg-btn:hover { background: #f3f4f6; color: var(--text); }
+
+/* Active states */
+.seg-btn.sel-true  { background: #10b981; color: white; }
+.seg-btn.sel-false { background: #ef4444; color: white; }
+.seg-btn.sel-na    { background: #94a3b8; color: white; }
+
+/* Clicking the already-active button un-sets it */
+.seg-btn.sel-true:hover,
+.seg-btn.sel-false:hover,
+.seg-btn.sel-na:hover { filter: brightness(1.1); }
+
+/* Auto-computed reference pill */
+.auto-pill {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.ap-true  { background: #d1fae5; color: #065f46; }
+.ap-false { background: #fee2e2; color: #991b1b; }
+.ap-null  { background: #f1f5f9; color: #94a3b8; }
+
+/* Right: notes + overall label */
+.overall-panel {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  flex: 1;
+  min-width: 0;
+}
+
+#notes-field {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  resize: none;
+  height: 76px;
+  outline: none;
+  transition: border-color 0.15s;
+  color: var(--text);
+  background: #fafafa;
+}
+#notes-field:focus { border-color: #3b82f6; background: white; }
+#notes-field::placeholder { color: #94a3b8; }
+
+.label-buttons { display: flex; flex-direction: column; gap: 5px; flex-shrink: 0; }
+.label-row { display: flex; gap: 5px; }
+
+.label-btn {
+  padding: 7px 14px;
+  border: none;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.12s, transform 0.1s, box-shadow 0.15s;
+  white-space: nowrap;
+}
+.label-btn:hover  { filter: brightness(1.08); transform: translateY(-1px); }
+.label-btn:active { transform: translateY(0); }
+
+.btn-pass  { background: var(--pass); color: white; }
+.btn-fail  { background: var(--fail); color: white; }
+.btn-defer { background: var(--defer); color: #1e293b; }
+.btn-undo  { background: #f1f5f9; color: var(--text); border: 1px solid var(--border); font-size: 11px; padding: 5px 10px; }
+
+.btn-pass.active  { box-shadow: 0 0 0 3px rgba(16,185,129,0.4); }
+.btn-fail.active  { box-shadow: 0 0 0 3px rgba(239,68,68,0.4); }
+.btn-defer.active { box-shadow: 0 0 0 3px rgba(245,158,11,0.4); }
+
+.footer-meta { display: flex; flex-direction: column; justify-content: center; gap: 4px; flex-shrink: 0; }
+#save-status { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.save-ok  { color: var(--pass) !important; }
+.save-err { color: var(--fail) !important; }
+
+.kbd { display: inline-flex; background: #f1f5f9; border: 1px solid #e2e8f0; border-bottom-width: 2px; border-radius: 4px; padding: 1px 5px; font-size: 10px; font-family: monospace; color: var(--muted); }
+#shortcut-hint { font-size: 11px; color: #94a3b8; line-height: 1.6; }
+
+#loading-msg { display: flex; align-items: center; justify-content: center; height: 100%; font-size: 15px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- ── Top bar ─────────────────────────────────────────── -->
+<div id="topbar">
+  <div class="title">STXM <span>Annotation</span></div>
+
+  <div class="progress-info">
+    <span id="trace-counter">— of —</span>
+    <span id="label-counts" style="color:#64748b"></span>
+  </div>
+
+  <div class="filter-row">
+    <select id="filter-type">
+      <option value="all">All types</option>
+      <option value="intensity_drop">Intensity Drop</option>
+      <option value="intensity_drift">Intensity Drift</option>
+      <option value="focus_decline">Focus Decline</option>
+    </select>
+    <select id="filter-severity">
+      <option value="all">All severities</option>
+      <option value="critical">Critical</option>
+      <option value="warn">Warn</option>
+    </select>
+    <select id="filter-context">
+      <option value="all">All contexts</option>
+      <option value="empty">Empty</option>
+      <option value="relevant">Relevant</option>
+      <option value="scan_lifecycle_only">Lifecycle only</option>
+      <option value="misleading">Misleading</option>
+    </select>
+    <select id="filter-model">
+      <option value="all">All models</option>
+      <option value="claude-haiku-4-5">Haiku 4.5</option>
+      <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+      <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+    </select>
+    <select id="filter-labeled">
+      <option value="all">All</option>
+      <option value="unlabeled">Unlabeled</option>
+      <option value="labeled">Labeled</option>
+    </select>
+    <select id="filter-tuple">
+      <option value="all">All tuples</option>
+    </select>
+  </div>
+
+  <div class="nav-controls">
+    <button id="btn-prev" onclick="navigate(-1)" title="Previous (←)">◀</button>
+    <input id="jump-input" type="number" min="1" placeholder="Go #" title="Jump to trace number" onkeydown="if(event.key==='Enter')jumpTo(this.value-1)">
+    <button id="btn-next" onclick="navigate(1)" title="Next (→)">▶</button>
+  </div>
+</div>
+
+<!-- ── Main ────────────────────────────────────────────── -->
+<div id="main">
+
+  <aside id="sidebar">
+    <div id="sidebar-inner"><div class="section" style="color:var(--muted);font-size:12px">Loading…</div></div>
+  </aside>
+
+  <div id="content">
+    <div id="content-inner"><div id="loading-msg">Loading traces…</div></div>
+  </div>
+
+</div>
+
+<!-- ── Annotation bar ───────────────────────────────────── -->
+<div id="annotation-bar">
+
+  <!-- Left: per-assertion human labels -->
+  <div class="assert-panel">
+    <div class="assert-panel-title">Human Assertion Labels <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#94a3b8">— override or fill in auto-computed values</span></div>
+    <div class="assert-grid" id="assert-grid">
+      <!-- rendered by JS per trace -->
+    </div>
+  </div>
+
+  <!-- Right: notes + overall trace label -->
+  <div class="overall-panel">
+    <textarea id="notes-field" placeholder="Notes on this trace (optional)…"></textarea>
+
+    <div class="label-buttons">
+      <div class="label-row" style="margin-bottom:2px;font-size:9px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">
+        Overall
+      </div>
+      <div class="label-row">
+        <button class="label-btn btn-pass"  id="btn-pass"  onclick="saveLabel('pass')"  title="Pass [1]">✓ Pass</button>
+        <button class="label-btn btn-fail"  id="btn-fail"  onclick="saveLabel('fail')"  title="Fail [2]">✗ Fail</button>
+        <button class="label-btn btn-defer" id="btn-defer" onclick="saveLabel('defer')" title="Defer [D]">⟳ Defer</button>
+      </div>
+      <div class="label-row" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+        <button class="label-btn btn-undo" id="btn-undo" onclick="undoLast()" title="Undo last label change [U]" style="width:100%">↩ Undo last (assertions + overall)</button>
+      </div>
+    </div>
+
+    <div class="footer-meta">
+      <div id="save-status"></div>
+      <div id="shortcut-hint">
+        <span class="kbd">1</span> Pass &nbsp;<span class="kbd">2</span> Fail<br>
+        <span class="kbd">D</span> Defer &nbsp;<span class="kbd">U</span> Undo<br>
+        <span class="kbd">←</span><span class="kbd">→</span> Navigate
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+<script>
+'use strict';
+
+// ── Assertion definitions ─────────────────────────────────
+const ASSERTIONS = [
+  { key: 'no_error',                label: 'No error' },
+  { key: 'on_topic',                label: 'On topic' },
+  { key: 'has_action',              label: 'Has action' },
+  { key: 'critical_urgent',         label: 'Urgent tone' },
+  { key: 'uses_shutter_context',    label: 'Shutter ctx' },
+  { key: 'uses_zone_plate_context', label: 'Zone plate ctx' },
+  { key: 'uses_energy_context',     label: 'Energy ctx' },
+];
+
+// ── State ─────────────────────────────────────────────────
+let allTraces = [];
+let filteredTraces = [];
+let labels = {};    // {traceKey: {label, notes, ts, human_assertions}}
+let idx = 0;
+let undoStack = [];
+let saveTimer = null;
+let navTimer = null;   // pending auto-advance after Pass/Fail
+
+// ── Boot ──────────────────────────────────────────────────
+async function init() {
+  try {
+    const [tRes, lRes] = await Promise.all([fetch('/api/traces'), fetch('/api/labels')]);
+    allTraces = await tRes.json();
+    labels = await lRes.json();
+    populateTupleFilter();
+    applyFilter();
+  } catch (e) {
+    document.getElementById('content-inner').innerHTML =
+      `<div class="error-banner">Failed to connect: ${esc(e.message)}<br>Start with: <code>python evals/annotation/server.py</code></div>`;
+  }
+}
+
+// ── Filtering ─────────────────────────────────────────────
+function populateTupleFilter() {
+  const ids = [...new Set(allTraces.map(t => t.tuple.id))].sort((a, b) => a - b);
+  const sel = document.getElementById('filter-tuple');
+  ids.forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = `Tuple #${id}`;
+    sel.appendChild(opt);
+  });
+}
+
+function applyFilter() {
+  const type   = document.getElementById('filter-type').value;
+  const sev    = document.getElementById('filter-severity').value;
+  const ctx    = document.getElementById('filter-context').value;
+  const model  = document.getElementById('filter-model').value;
+  const lstate = document.getElementById('filter-labeled').value;
+  const tuple  = document.getElementById('filter-tuple').value;
+
+  filteredTraces = allTraces.filter(t => {
+    if (type  !== 'all' && t.tuple.anomaly_type  !== type)  return false;
+    if (sev   !== 'all' && t.tuple.severity       !== sev)   return false;
+    if (ctx   !== 'all' && t.tuple.event_context  !== ctx)   return false;
+    if (model !== 'all' && t.model                !== model) return false;
+    if (tuple !== 'all' && t.tuple.id             !== +tuple) return false;
+    const k = traceKey(t);
+    if (lstate === 'labeled'   && !labels[k]) return false;
+    if (lstate === 'unlabeled' &&  labels[k]) return false;
+    return true;
+  });
+
+  idx = Math.max(0, Math.min(idx, filteredTraces.length - 1));
+  render();
+  updateCounts();
+}
+
+['filter-type','filter-severity','filter-context','filter-model','filter-labeled','filter-tuple'].forEach(id =>
+  document.getElementById(id).addEventListener('change', applyFilter));
+
+// ── Keys ──────────────────────────────────────────────────
+function traceKey(t) { return `${t.run_id}:${t.id}`; }
+
+// ── Navigation ────────────────────────────────────────────
+function navigate(delta) {
+  if (navTimer) { clearTimeout(navTimer); navTimer = null; }  // cancel any pending auto-advance
+  const next = idx + delta;
+  if (next < 0 || next >= filteredTraces.length) return;
+  idx = next;
+  render();
+  document.getElementById('content').scrollTop = 0;
+  document.getElementById('sidebar').scrollTop = 0;
+}
+
+function jumpTo(n) {
+  n = parseInt(n, 10);
+  if (isNaN(n) || n < 0 || n >= filteredTraces.length) return;
+  idx = n;
+  render();
+  document.getElementById('jump-input').value = '';
+}
+
+// ── Overall label ─────────────────────────────────────────
+function saveLabel(label) {
+  if (!filteredTraces.length) return;
+  const t = filteredTraces[idx];
+  const k = traceKey(t);
+  const notes = document.getElementById('notes-field').value.trim();
+
+  const existing = labels[k] || {};
+  undoStack.push({ k, prev: existing ? JSON.parse(JSON.stringify(existing)) : null });
+  if (undoStack.length > 100) undoStack.shift();
+
+  labels[k] = {
+    ...existing,
+    label,
+    notes,
+    ts: new Date().toISOString(),
+    human_assertions: existing.human_assertions || {},
+  };
+
+  scheduleSave();
+  refreshAnnotationUI();
+  updateCounts();
+
+  if (label !== 'defer') {
+    if (navTimer) clearTimeout(navTimer);
+    navTimer = setTimeout(() => { navTimer = null; navigate(1); }, 350);
+  }
+}
+
+// ── Per-assertion human label ─────────────────────────────
+function setHumanAssertion(akey, value) {
+  if (!filteredTraces.length) return;
+  const t = filteredTraces[idx];
+  const k = traceKey(t);
+
+  const existing = labels[k] || {};
+  const existingHa = existing.human_assertions || {};
+
+  // Clicking an already-active button clears the human label (un-sets it)
+  const isToggleOff = existingHa.hasOwnProperty(akey) && existingHa[akey] === value;
+
+  undoStack.push({ k, prev: existing ? JSON.parse(JSON.stringify(existing)) : null });
+  if (undoStack.length > 100) undoStack.shift();
+
+  const newHa = { ...existingHa };
+  if (isToggleOff) {
+    delete newHa[akey];  // un-set: back to unreviewed
+  } else {
+    newHa[akey] = value;
+  }
+
+  labels[k] = {
+    ...existing,
+    ts: new Date().toISOString(),
+    human_assertions: newHa,
+  };
+
+  scheduleSave();
+  refreshAnnotationUI();
+  updateCounts();
+}
+
+// ── Undo ──────────────────────────────────────────────────
+function undoLast() {
+  if (!undoStack.length) return;
+  const { k, prev } = undoStack.pop();
+  if (prev === null || Object.keys(prev).length === 0) {
+    delete labels[k];
+  } else {
+    labels[k] = prev;
+  }
+  scheduleSave();
+  refreshAnnotationUI();
+  updateCounts();
+  showStatus('Undone', 'ok');
+}
+
+// ── Persist ───────────────────────────────────────────────
+function scheduleSave() {
+  showStatus('Saving…');
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      const r = await fetch('/api/labels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(labels),
+      });
+      showStatus(r.ok ? 'Saved' : 'Save failed', r.ok ? 'ok' : 'err');
+    } catch {
+      showStatus('Save failed', 'err');
+    }
+  }, 500);
+}
+
+function showStatus(msg, cls) {
+  const el = document.getElementById('save-status');
+  el.textContent = msg;
+  el.className = cls ? `save-${cls}` : '';
+  if (cls === 'ok') setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 2500);
+}
+
+// ── Render ────────────────────────────────────────────────
+function render() {
+  document.getElementById('btn-prev').disabled = idx <= 0;
+  document.getElementById('btn-next').disabled = idx >= filteredTraces.length - 1;
+  document.getElementById('trace-counter').textContent =
+    filteredTraces.length ? `${idx + 1} of ${filteredTraces.length}` : '0 of 0';
+
+  if (!filteredTraces.length) {
+    document.getElementById('sidebar-inner').innerHTML =
+      '<div class="section" style="color:var(--muted);font-size:12px">No traces match filter.</div>';
+    document.getElementById('content-inner').innerHTML =
+      '<div id="loading-msg">No traces match current filters.</div>';
+    document.getElementById('assert-grid').innerHTML = '';
+    return;
+  }
+
+  const t = filteredTraces[idx];
+  renderSidebar(t);
+  renderContent(t);
+  renderAssertGrid(t);
+  refreshAnnotationUI();
+}
+
+// ── Refresh UI state from labels ──────────────────────────
+function refreshAnnotationUI() {
+  if (!filteredTraces.length) return;
+  const t = filteredTraces[idx];
+  const entry = labels[traceKey(t)];
+  const ha = entry?.human_assertions || {};
+
+  // Notes
+  document.getElementById('notes-field').value = entry?.notes || '';
+
+  // Overall label buttons
+  ['pass','fail','defer'].forEach(l =>
+    document.getElementById(`btn-${l}`).classList.toggle('active', entry?.label === l));
+
+  // Assertion seg buttons
+  ASSERTIONS.forEach(a => {
+    const row = document.getElementById(`arow-${a.key}`);
+    if (!row) return;
+    const btns = row.querySelectorAll('.seg-btn');
+    const hasHuman = ha.hasOwnProperty(a.key);
+    btns[0].classList.toggle('sel-true',  hasHuman && ha[a.key] === true);
+    btns[1].classList.toggle('sel-false', hasHuman && ha[a.key] === false);
+    btns[2].classList.toggle('sel-na',    hasHuman && ha[a.key] === null);
+  });
+
+  // Label indicator in sidebar
+  const li = document.getElementById('sidebar-label');
+  if (li) {
+    li.innerHTML = entry?.label
+      ? `<span class="label-indicator li-${entry.label}">${{pass:'✓',fail:'✗',defer:'⟳'}[entry.label]} ${entry.label}</span>`
+      : '';
+  }
+
+  // Refresh sidebar assertion human badges
+  ASSERTIONS.forEach(a => {
+    const badge = document.getElementById(`hbadge-${a.key}`);
+    if (!badge) return;
+    if (ha.hasOwnProperty(a.key)) {
+      const val = ha[a.key];
+      const cls = val === true ? 'hb-true' : val === false ? 'hb-false' : 'hb-na';
+      const txt = val === true ? 'H:✓' : val === false ? 'H:✗' : 'H:–';
+      badge.className = `human-badge ${cls}`;
+      badge.textContent = txt;
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  });
+}
+
+// ── Assertion grid in footer ──────────────────────────────
+function renderAssertGrid(trace) {
+  const autoA = trace.assertions || {};
+  document.getElementById('assert-grid').innerHTML = ASSERTIONS.map(a => {
+    const av = autoA[a.key];
+    const [apCls, apTxt] =
+      av === true  ? ['ap-true',  'auto:✓'] :
+      av === false ? ['ap-false', 'auto:✗'] :
+                     ['ap-null',  'auto:–'];
+    return `<div class="assert-row" id="arow-${a.key}">
+      <span class="arow-label" title="${a.key}">${a.label}</span>
+      <div class="seg-group">
+        <button class="seg-btn" onclick="setHumanAssertion('${a.key}', true)"  title="Set true (click again to un-set)">✓</button>
+        <button class="seg-btn" onclick="setHumanAssertion('${a.key}', false)" title="Set false (click again to un-set)">✗</button>
+        <button class="seg-btn" onclick="setHumanAssertion('${a.key}', null)"  title="Mark N/A (click again to un-set)">–</button>
+      </div>
+      <span class="auto-pill ${apCls}">${apTxt}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Sidebar ───────────────────────────────────────────────
+function renderSignalMetrics(anomaly, sev) {
+  const barCls = sev === 'critical' ? 'bar-critical' : 'bar-warn';
+
+  if (anomaly.type === 'intensity_drop') {
+    const ratio = anomaly.line_mean / anomaly.baseline_mean;
+    const barW  = Math.min(100, Math.round(ratio * 100));
+    const delta = Math.round((1 - ratio) * 100);
+    return `
+      <div class="metric-bar-container">
+        <div class="metric-bar-row">
+          <span class="metric-bar-label">Baseline</span>
+          <div class="bar-track"><div class="bar-fill bar-baseline" style="width:100%"></div></div>
+          <span class="metric-bar-value">${anomaly.baseline_mean.toLocaleString()}</span>
+        </div>
+        <div class="metric-bar-row">
+          <span class="metric-bar-label">Current</span>
+          <div class="bar-track"><div class="bar-fill ${barCls}" style="width:${barW}%"></div></div>
+          <span class="metric-bar-value">${anomaly.line_mean.toLocaleString()}</span>
+        </div>
+      </div>
+      <div class="chips">
+        <div class="chip">z <strong>${anomaly.z_score.toFixed(1)}</strong></div>
+        <div class="chip">σ <strong>${anomaly.baseline_std.toLocaleString()}</strong></div>
+        <div class="chip">Δ <strong>${delta > 0 ? '−' : '+'}${Math.abs(delta)}%</strong></div>
+      </div>`;
+  }
+
+  if (anomaly.type === 'intensity_drift') {
+    const pct = Math.round(anomaly.fractional_slope * 100);
+    return `
+      <div class="metric-bar-container">
+        <div class="metric-bar-row">
+          <span class="metric-bar-label">Baseline</span>
+          <div class="bar-track"><div class="bar-fill bar-baseline" style="width:100%"></div></div>
+          <span class="metric-bar-value">${anomaly.baseline_mean.toLocaleString()}</span>
+        </div>
+      </div>
+      <div class="chips">
+        <div class="chip">slope <strong>${anomaly.slope_per_line.toLocaleString()}/ln</strong></div>
+        <div class="chip">drift <strong>${pct > 0 ? '+' : ''}${pct}%</strong></div>
+      </div>`;
+  }
+
+  if (anomaly.type === 'focus_decline') {
+    const ratio = anomaly.focus_score / anomaly.prev_focus_score;
+    const barW  = Math.min(100, Math.round(ratio * 100));
+    return `
+      <div class="metric-bar-container">
+        <div class="metric-bar-row">
+          <span class="metric-bar-label">Prev</span>
+          <div class="bar-track"><div class="bar-fill bar-baseline" style="width:100%"></div></div>
+          <span class="metric-bar-value">${anomaly.prev_focus_score.toFixed(3)}</span>
+        </div>
+        <div class="metric-bar-row">
+          <span class="metric-bar-label">Current</span>
+          <div class="bar-track"><div class="bar-fill ${barCls}" style="width:${barW}%"></div></div>
+          <span class="metric-bar-value">${anomaly.focus_score.toFixed(3)}</span>
+        </div>
+      </div>
+      <div class="chips">
+        <div class="chip">Δ <strong>${anomaly.pct_change}%</strong></div>
+      </div>`;
+  }
+
+  return '<div class="no-events" style="font-size:12px">Unknown anomaly type</div>';
+}
+
+function renderSidebar(t) {
+  const { tuple, anomaly, recent_events = [], assertions = {} } = t;
+  const sev = tuple.severity;
+
+  document.getElementById('sidebar-inner').innerHTML = `
+    <div class="section">
+      <div class="section-title">Anomaly</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <span class="badge badge-${tuple.anomaly_type}">${tuple.anomaly_type.replace(/_/g,' ')}</span>
+        <span class="badge badge-${sev}">${sev.toUpperCase()}</span>
+      </div>
+      <div id="sidebar-label"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Signal Metrics</div>
+      ${renderSignalMetrics(anomaly, sev)}
+    </div>
+
+    <div class="section">
+      <div class="section-title">Event Context</div>
+      <span class="badge badge-${tuple.event_context}">${tuple.event_context.replace(/_/g,' ')}</span>
+      <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-top:8px">${esc(tuple.notes)}</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Recent Events (${recent_events.length})</div>
+      ${renderEvents(recent_events)}
+    </div>
+
+    <div class="section">
+      <div class="section-title">Auto Assertions <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px">(reference — human labels in bar below)</span></div>
+      ${renderRefAssertions(assertions)}
+    </div>
+  `;
+}
+
+function renderRefAssertions(assertions) {
+  const NAMES = {
+    no_error:'No error', on_topic:'On topic', has_action:'Has action',
+    critical_urgent:'Urgent tone', uses_shutter_context:'Shutter ctx',
+    uses_zone_plate_context:'Zone plate ctx', uses_energy_context:'Energy ctx',
+  };
+  return '<div class="ref-assert-grid">' +
+    Object.entries(NAMES).map(([k, label]) => {
+      const v = assertions[k];
+      const cls = v === true ? 'auto-true' : v === false ? 'auto-false' : 'auto-null';
+      const icon = v === true ? '✓' : v === false ? '✗' : '–';
+      return `<div class="ref-assert-row">
+        <div class="auto-dot ${cls}">${icon}</div>
+        <span class="ref-name">${label}</span>
+        <span class="human-badge" id="hbadge-${k}" style="display:none"></span>
+      </div>`;
+    }).join('') + '</div>';
+}
+
+function renderEvents(events) {
+  if (!events.length) return '<div class="no-events">No recent events</div>';
+  const t0 = events[0].timestamp;
+  return '<ul class="event-list">' + events.map(ev => {
+    const rel = (ev.timestamp - t0).toFixed(0);
+    const time = rel === '0' ? 'T+0' : `T+${rel}s`;
+    let desc = '', detail = '';
+    switch (ev.type) {
+      case 'scan_start':
+        desc = `Scan started — ${esc(ev.scan_type)}`; detail = esc(ev.scan_id || ''); break;
+      case 'shutter_changed':
+        desc = `Shutter ${esc(ev.mode)}`; detail = ev.during_scan ? 'during active scan' : ''; break;
+      case 'region_complete':
+        desc = `Region ${ev.region} complete`;
+        detail = ev.frame_mean != null ? `mean ${ev.frame_mean.toLocaleString()} · focus ${ev.focus_score ?? '—'}` : ''; break;
+      case 'motor_moved':
+        desc = `Motor: ${esc(ev.motor || '?')}`;
+        detail = ev.actual != null ? `target ${ev.target} → actual ${ev.actual}${ev.during_scan ? ' (during scan)' : ''}` : ''; break;
+      case 'daq_timeout':
+        desc = 'DAQ timeout'; detail = ev.line_index != null ? `line ${ev.line_index}` : ''; break;
+      case 'scan_paused':    desc = 'Scan paused';    break;
+      case 'scan_resumed':   desc = 'Scan resumed';   break;
+      case 'scan_cancelled': desc = 'Scan cancelled'; break;
+      default: desc = esc(ev.type.replace(/_/g,' '));
+    }
+    return `<li class="event-item ${ev.type}">
+      <span class="event-time">${time}</span>
+      <div>
+        <div class="event-desc">${desc}</div>
+        ${detail ? `<div class="event-detail">${detail}</div>` : ''}
+      </div>
+    </li>`;
+  }).join('') + '</ul>';
+}
+
+// ── Right panel ───────────────────────────────────────────
+function renderContent(t) {
+  const { system_prompt, prompt, response, model, timestamp, error } = t;
+  const modelSlug = (model || 'unknown').replace(/[.]/g, '-');
+  const ts = timestamp ? new Date(timestamp * 1000).toLocaleString() : '';
+
+  let responseHtml;
+  if (error) {
+    responseHtml = `<div class="error-banner">⚠ Inference error: ${esc(String(error))}</div>`;
+  } else if (response) {
+    const md = typeof marked !== 'undefined'
+      ? marked.parse(response.replace(/<script[\s\S]*?<\/script>/gi, ''))
+      : `<pre>${esc(response)}</pre>`;
+    responseHtml = `<div class="md">${md}</div>`;
+  } else {
+    responseHtml = `<div style="color:var(--muted);font-style:italic">No response recorded.</div>`;
+  }
+
+  document.getElementById('content-inner').innerHTML = `
+    <div class="content-block">
+      <details class="sys-prompt">
+        <summary>System Prompt (shared across all traces)</summary>
+        <div class="sys-content">${esc(system_prompt || '')}</div>
+      </details>
+      <div class="block-header">
+        <span class="block-label">Prompt</span>
+        <span style="font-size:11px;color:var(--muted)">tuple #${t.tuple.id}</span>
+      </div>
+      <div class="block-body"><div class="prompt-text">${esc(prompt || '')}</div></div>
+    </div>
+    <div class="content-block">
+      <div class="block-header">
+        <span class="block-label">Model Response</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="badge badge-${modelSlug}" style="font-size:10px">${esc(model || '?')}</span>
+          <span style="font-size:11px;color:var(--muted)">${ts}</span>
+        </div>
+      </div>
+      <div class="block-body">${responseHtml}</div>
+    </div>
+  `;
+}
+
+// ── Progress ──────────────────────────────────────────────
+function updateCounts() {
+  const labeled   = Object.keys(labels).length;
+  const remaining = allTraces.length - labeled;
+  document.getElementById('label-counts').textContent =
+    `${labeled} labeled · ${remaining} remaining`;
+}
+
+// ── Utilities ─────────────────────────────────────────────
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Keyboard shortcuts ────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const inField = ['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName);
+
+  if (e.metaKey || e.ctrlKey) {
+    if (e.key === 's') { e.preventDefault(); scheduleSave(); showStatus('Saved','ok'); }
+    return;
+  }
+  if (inField) return;
+
+  switch (e.key) {
+    case 'ArrowLeft':  e.preventDefault(); navigate(-1);      break;
+    case 'ArrowRight': e.preventDefault(); navigate(1);       break;
+    case '1':                              saveLabel('pass');  break;
+    case '2':                              saveLabel('fail');  break;
+    case 'd': case 'D':                    saveLabel('defer'); break;
+    case 'u': case 'U':                    undoLast();         break;
+  }
+});
+
+init();
+</script>
+</body>
+</html>
