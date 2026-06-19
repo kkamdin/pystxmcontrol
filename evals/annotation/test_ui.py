@@ -12,10 +12,18 @@ import urllib.request, urllib.error
 
 BASE_URL = "http://localhost:7777"
 try:
-    urllib.request.urlopen(f"{BASE_URL}/api/traces", timeout=2)
+    with urllib.request.urlopen(f"{BASE_URL}/api/traces", timeout=2) as _r:
+        TRACES = json.load(_r)
 except urllib.error.URLError:
     print("ERROR: server not running. Start with: python server.py")
     sys.exit(1)
+
+# Derive expected counts from the served data so assertions are not tied to a
+# specific dataset.
+from collections import Counter
+
+TOTAL = len(TRACES)
+TYPE_COUNTS = Counter(t["tuple"]["anomaly_type"] for t in TRACES)
 
 # ── Playwright ────────────────────────────────────────────
 from playwright.sync_api import sync_playwright, expect
@@ -23,7 +31,7 @@ from playwright.sync_api import sync_playwright, expect
 SCREENSHOTS = Path(__file__).parent / "screenshots"
 SCREENSHOTS.mkdir(exist_ok=True)
 
-LABELS_FILE = Path(__file__).parent / "labels.json"
+LABELS_FILE = Path(__file__).parent.parent / "intelligence_agent" / "labels.json"
 
 
 def reset_labels():
@@ -114,7 +122,7 @@ def run_tests():
         page.click("#btn-next")
         time.sleep(0.3)
         counter_text = page.locator("#trace-counter").text_content()
-        assert "of 213" in counter_text, f"Counter should show 213 total, got: {counter_text}"
+        assert f"of {TOTAL}" in counter_text, f"Counter should show {TOTAL} total, got: {counter_text}"
         print(f"✓  Counter shows correct total: {counter_text}")
 
         # ── 7. Reload and verify labels persist ───────────
@@ -170,7 +178,9 @@ def run_tests():
         page.select_option("#filter-type", "intensity_drop")
         time.sleep(0.4)
         counter_filtered = page.locator("#trace-counter").text_content()
-        assert "of 78" in counter_filtered, f"intensity_drop filter: expected 78, got: {counter_filtered}"
+        expected_drop = TYPE_COUNTS["intensity_drop"]
+        assert f"of {expected_drop}" in counter_filtered, \
+            f"intensity_drop filter: expected {expected_drop}, got: {counter_filtered}"
         print(f"✓  Type filter works: {counter_filtered}")
 
         page.select_option("#filter-severity", "critical")
