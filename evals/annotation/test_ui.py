@@ -32,15 +32,35 @@ SCREENSHOTS = Path(__file__).parent / "screenshots"
 SCREENSHOTS.mkdir(exist_ok=True)
 
 LABELS_FILE = Path(__file__).parent.parent / "intelligence_agent" / "labels.json"
+BACKUP_FILE = LABELS_FILE.with_suffix(".json.testbak")
 
 
 def reset_labels():
+    # Preserve any real annotations the test would otherwise destroy.
+    # If a prior run was interrupted before restoring, BACKUP_FILE already holds
+    # the real data — recover it first so we never overwrite it with scratch data.
+    if BACKUP_FILE.exists():
+        BACKUP_FILE.replace(LABELS_FILE)
     if LABELS_FILE.exists():
-        LABELS_FILE.unlink()
+        LABELS_FILE.replace(BACKUP_FILE)
+
+
+def restore_labels():
+    if BACKUP_FILE.exists():
+        BACKUP_FILE.replace(LABELS_FILE)
+    elif LABELS_FILE.exists():
+        LABELS_FILE.unlink()  # no pre-existing labels; remove the test's scratch file
 
 
 def run_tests():
     reset_labels()
+    try:
+        _run_tests()
+    finally:
+        restore_labels()
+
+
+def _run_tests():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1440, "height": 900})

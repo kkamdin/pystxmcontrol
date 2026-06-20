@@ -9,6 +9,7 @@ Usage:
 
 import argparse
 import json
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -118,8 +119,11 @@ class Handler(BaseHTTPRequestHandler):
         if urlparse(self.path).path == "/api/labels":
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length))
-            with open(LABELS_FILE, "w") as f:
+            # Atomic write: a crash mid-dump must not truncate the labels file.
+            tmp = LABELS_FILE.with_suffix(LABELS_FILE.suffix + ".tmp")
+            with open(tmp, "w") as f:
                 json.dump(data, f, indent=2)
+            os.replace(tmp, LABELS_FILE)
             self.send_json({"ok": True})
         else:
             self.send_response(404)
