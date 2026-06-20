@@ -6,6 +6,9 @@ runs_meta.jsonl
 results.jsonl
 report.html
 
+# Annotation labels (can be large, not tracked) + transient tmp/backup files
+labels.json*
+
 # Analysis run data and environment
 analysis/traces.jsonl
 analysis/runs_meta.jsonl
