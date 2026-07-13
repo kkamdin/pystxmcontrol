@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 from pystxmcontrol.controller.intelligence import (
+    _CRITICAL_FOCUS_DECLINE_MULTIPLIER,
     _CRITICAL_ZSCORE_MULTIPLIER,
     AnomalyDetector,
 )
@@ -77,11 +78,15 @@ _EVENTS: dict[int, list[dict]] = {
 # ---------------------------------------------------------------------------
 
 def _anomaly(anomaly_type: str, severity: str, detector: AnomalyDetector) -> dict:
-    zt = detector.zscore_threshold
-    critical_z = zt * _CRITICAL_ZSCORE_MULTIPLIER
+    """Build a value that just clears the detector's (critical-only) firing bar.
 
+    All tuples are severity="critical" — the detector no longer has a "warn"
+    tier — so these always compute a value a bit past the real critical bar
+    rather than a separate synthetic edge case.
+    """
     if anomaly_type == "intensity_drop":
-        z = -(critical_z + 0.5) if severity == "critical" else -(zt + 0.3)
+        critical_z = detector.zscore_threshold * _CRITICAL_ZSCORE_MULTIPLIER
+        z = -(critical_z + 0.5)
         baseline_mean = 8500.0
         baseline_std = 800.0
         line_mean = baseline_mean + z * baseline_std
@@ -95,9 +100,9 @@ def _anomaly(anomaly_type: str, severity: str, detector: AnomalyDetector) -> dic
         }
 
     elif anomaly_type == "focus_decline":
-        # Detector only produces warn for focus; critical is a synthetic edge case.
+        critical_pct = detector.focus_decline_pct * _CRITICAL_FOCUS_DECLINE_MULTIPLIER
         prev_focus = 0.82
-        pct = -(detector.focus_decline_pct + 15.0) if severity == "critical" else -(detector.focus_decline_pct + 1.0)
+        pct = -(critical_pct + 0.5)
         focus_score = prev_focus * (1 + pct / 100.0)
         return {
             "type": "focus_decline",
@@ -132,6 +137,7 @@ def main() -> None:
         "built_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "n_tuples": len(tuples),
         "critical_zscore_multiplier": _CRITICAL_ZSCORE_MULTIPLIER,
+        "critical_focus_decline_multiplier": _CRITICAL_FOCUS_DECLINE_MULTIPLIER,
         "anomaly_config": anomaly_cfg,
     }
     INPUTS_META_PATH.write_text(json.dumps(inputs_meta, indent=2))

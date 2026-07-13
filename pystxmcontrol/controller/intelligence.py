@@ -9,7 +9,8 @@ EventRecorder uses named channels:
     "events"  — scan lifecycle + anomalies + agent suggestions  (default max 500)
     "metrics" — per-line mean, per-point value                  (default max 200)
 
-Anomaly rules (all configurable via main_config["intelligence"]["anomaly"]):
+Anomaly rules (all configurable via main_config["intelligence"]["anomaly"]),
+critical-only — there is no lower-severity "warn" tier:
     intensity_drop  — z-score of current line mean vs rolling baseline
     focus_decline   — focus score drops > threshold % between regions
 
@@ -34,7 +35,10 @@ _DEFAULT_CHANNELS = {
     "metrics": 200,
 }
 
-_CRITICAL_ZSCORE_MULTIPLIER = 1.5  # z_score < -(threshold * this) → critical severity
+_CRITICAL_ZSCORE_MULTIPLIER = 1.5  # sole firing bar: z_score must clear -(threshold * this)
+# base value (focus_decline_pct) lives in config/main.json under intelligence.anomaly;
+# this multiplier scales it up to the sole (critical-only) firing bar, same pattern as above.
+_CRITICAL_FOCUS_DECLINE_MULTIPLIER = 1.5
 
 _SYSTEM_PROMPT = """\
 You are an expert scientist monitoring a scanning transmission X-ray microscopy \
@@ -119,10 +123,14 @@ def _laplacian_variance(image: np.ndarray) -> float:
 class AnomalyDetector:
     """Stateful anomaly checker for STXM scan metrics.
 
-    Checks two rules in order of immediacy:
-    1. intensity_drop  — current line mean is > zscore_threshold sigma below
-                         the rolling baseline (sudden events: beam dump, shutter)
-    2. focus_decline   — focus score drops > focus_decline_pct % vs previous
+    Checks two rules in order of immediacy. Both are critical-only: the bar for
+    firing at all is set high enough that anything reported is already severe,
+    so there is no separate low-severity ("warn") tier to alert on.
+    1. intensity_drop  — current line mean is > (zscore_threshold *
+                         _CRITICAL_ZSCORE_MULTIPLIER) sigma below the rolling
+                         baseline (sudden events: beam dump, shutter)
+    2. focus_decline   — focus score drops > (focus_decline_pct *
+                         _CRITICAL_FOCUS_DECLINE_MULTIPLIER) % vs previous
                          region (thermal drift of zone plate / stage)
 
     All thresholds are configurable via the ``anomaly`` config dict.
@@ -155,11 +163,11 @@ class AnomalyDetector:
         z = (line_mean - mu) / sigma
 
         pct_drop = (mu - line_mean) / mu if mu > 0 else 0.0
-        if z < -self.zscore_threshold and pct_drop >= self.pct_threshold:
-            severity = "critical" if z < -self.zscore_threshold * _CRITICAL_ZSCORE_MULTIPLIER else "warn"
+        critical_z = self.zscore_threshold * _CRITICAL_ZSCORE_MULTIPLIER
+        if z < -critical_z and pct_drop >= self.pct_threshold:
             return {
                 "type": "intensity_drop",
-                "severity": severity,
+                "severity": "critical",
                 "line_mean": round(line_mean, 4),
                 "baseline_mean": round(mu, 4),
                 "baseline_std": round(sigma, 4),
@@ -178,10 +186,11 @@ class AnomalyDetector:
         pct_change = (focus_score - prev) / prev * 100.0
         self._prev_focus = focus_score
 
-        if pct_change < -self.focus_decline_pct:
+        critical_pct = self.focus_decline_pct * _CRITICAL_FOCUS_DECLINE_MULTIPLIER
+        if pct_change < -critical_pct:
             return {
                 "type": "focus_decline",
-                "severity": "warn",
+                "severity": "critical",
                 "focus_score": round(focus_score, 4),
                 "prev_focus_score": round(prev, 4),
                 "pct_change": round(pct_change, 1),
