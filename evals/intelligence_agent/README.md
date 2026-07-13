@@ -6,7 +6,7 @@ Assertion-based evals for `AgentInterface` (`IntelligenceModule`) — the anomal
 
 Each tuple in `tuples.jsonl` defines one test case as a combination of three dimensions:
 
-- **anomaly_type** — which detector rule fired (`intensity_drop`, `intensity_drift`, `focus_decline`)
+- **anomaly_type** — which detector rule fired (`intensity_drop`, `focus_decline`)
 - **severity** — `warn` or `critical`
 - **event_context** — how informative the recent event history is (`empty`, `scan_lifecycle_only`, `relevant`, `misleading`)
 

@@ -62,15 +62,6 @@ _EVENTS: dict[int, list[dict]] = {
          _event(30, "motor_moved", motor="SampleX", target=0.5, actual=0.49, during_scan=False)],
     5:  [_scan_start(0),
          _event(20, "shutter_changed", mode="auto", during_scan=True)],
-    6:  [],
-    7:  [_scan_start(0),
-         _event(15, "motor_moved", motor="Energy", target=710.0, actual=710.0, during_scan=False)],
-    8:  [_scan_start(0), _region_complete(60)],
-    9:  [_scan_start(0),
-         _event(35, "daq_timeout", line_index=5)],
-    10: [_scan_start(0),
-         _event(20, "motor_moved", motor="SampleX", target=1.0, actual=1.0, during_scan=False),
-         _event(40, "shutter_changed", mode="auto", during_scan=True)],
     11: [],
     12: [_scan_start(0),
          _event(25, "motor_moved", motor="ZonePlateZ", target=-2.5, actual=-2.5, during_scan=False)],
@@ -83,7 +74,6 @@ _EVENTS: dict[int, list[dict]] = {
          _event(20, "scan_paused"),
          _event(22, "shutter_changed", mode="close", during_scan=True),
          _event(55, "scan_resumed")],
-    17: [_scan_start(0), _region_complete(60, 0), _region_complete(120, 1), _region_complete(180, 2)],
     18: [_scan_start(0), _region_complete(60)],
     19: [_scan_start(0),
          _event(30, "scan_cancelled"),
@@ -114,18 +104,6 @@ def _anomaly(anomaly_type: str, severity: str, detector: AnomalyDetector) -> dic
             "baseline_mean": round(baseline_mean, 4),
             "baseline_std": round(baseline_std, 4),
             "z_score": round(z, 2),
-        }
-
-    elif anomaly_type == "intensity_drift":
-        # Detector only produces warn for drift; critical is a synthetic edge case.
-        fractional_slope = detector.drift_threshold * 1.5
-        baseline_mean = 7000.0
-        return {
-            "type": "intensity_drift",
-            "severity": severity,
-            "slope_per_line": round(fractional_slope * baseline_mean, 6),
-            "fractional_slope": round(fractional_slope, 4),
-            "baseline_mean": round(baseline_mean, 4),
         }
 
     elif anomaly_type == "focus_decline":
