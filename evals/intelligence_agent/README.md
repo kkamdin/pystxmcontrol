@@ -7,7 +7,7 @@ Assertion-based evals for `AgentInterface` (`IntelligenceModule`) — the anomal
 Each tuple in `tuples.jsonl` defines one test case as a combination of three dimensions:
 
 - **anomaly_type** — which detector rule fired (`intensity_drop`, `focus_decline`)
-- **severity** — `warn` or `critical`
+- **severity** — `critical` (`warn` was dropped from the tuple set — see notes)
 - **event_context** — how informative the recent event history is (`empty`, `scan_lifecycle_only`, `relevant`, `misleading`)
 
 `build_inputs.py` converts each tuple into a concrete synthetic input: a realistic `anomaly` dict (with real float values derived from deployed thresholds) and a `recent_events` list. Those inputs are then run through the actual LLM via `run_eval.py`. Assertions are scored against the responses in `run_assertions.py`. See `tuples.jsonl` for the full set of test cases.
