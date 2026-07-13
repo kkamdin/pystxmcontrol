@@ -72,20 +72,21 @@ Events recorded automatically include: `scan_start`, `scan_complete`, `scan_abor
 
 ### AnomalyDetector
 
-Three rules checked in order:
+Two rules checked in order:
 
 1. **`intensity_drop`** — z-score of current line mean vs rolling baseline.
    Fires when the current line is more than `zscore_threshold` σ below the
    preceding `zscore_window` lines.  Severity is `critical` if the drop exceeds
    1.5× the threshold, `warn` otherwise.
 
-2. **`intensity_drift`** — linear slope across the last `drift_window` line means,
-   normalised by the baseline mean.  Fires when the fractional slope falls below
-   `drift_threshold` (negative = downward trend).
-
-3. **`focus_decline`** — Laplacian variance of the completed region image compared
+2. **`focus_decline`** — Laplacian variance of the completed region image compared
    to the previous region.  Fires when the focus score drops more than
    `focus_decline_pct` percent.
+
+A gradual intensity-drift rule (linear slope over a rolling window) was removed:
+normal scans drift within expected bounds as a matter of course, and the slope
+check had no way to distinguish that from an actual instrument fault — it just
+generated false-positive alerts and agent calls.
 
 All thresholds are configurable (see [Configuration](#configuration)).
 
@@ -128,12 +129,11 @@ to instrument commands:
 | Anomaly type      | Available actions |
 |-------------------|------------------|
 | `intensity_drop`  | Open Shutter, Abort Scan, Clear Alert |
-| `intensity_drift` | Abort Scan, Clear Alert |
 | `focus_decline`   | Move to Focus, Clear Alert |
 | `daq_timeout`     | Clear Alert |
 
 **Alarm banner** — when a `critical` anomaly arrives, the proposal status banner
-turns red with a short label ("Beam Lost", "Signal Drifting", etc.).  Clicking
+turns red with a short label ("Beam Lost", "Focus Lost", etc.).  Clicking
 "Clear Alert" in the Agent tab restores the banner to its normal proposal state.
 
 ---
@@ -152,8 +152,6 @@ All settings live under `intelligence` in `config/main.json`.
     "anomaly": {
         "zscore_threshold": 3.0,
         "zscore_window": 20,
-        "drift_window": 15,
-        "drift_threshold": -0.05,
         "focus_decline_pct": 30.0
     },
     "agent": {
@@ -177,8 +175,6 @@ Set `intelligence.agent.enabled = true` additionally to enable LLM calls.
 |-----------|---------|--------|
 | `zscore_threshold` | 3.0 | Sigma threshold for intensity drop detection |
 | `zscore_window` | 20 | Number of preceding lines used to build the baseline |
-| `drift_window` | 15 | Lines used to fit the drift slope |
-| `drift_threshold` | -0.05 | Fractional slope per line below which drift fires |
 | `focus_decline_pct` | 30.0 | % drop in focus score between regions to trigger alert |
 
 ### API providers

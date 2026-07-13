@@ -15,7 +15,6 @@ from PySide6.QtCore import Signal, QUrl
 # ---------------------------------------------------------------------------
 _ANOMALY_ACTIONS = {
     "intensity_drop":  [("Open Shutter", "open_shutter"), ("Abort Scan", "abort_scan"), ("Clear Alert", "clear_alert")],
-    "intensity_drift": [("Abort Scan", "abort_scan"), ("Clear Alert", "clear_alert")],
     "focus_decline":   [("Move to Focus", "move_to_focus"), ("Clear Alert", "clear_alert")],
     "daq_timeout":     [("Clear Alert", "clear_alert")],
 }

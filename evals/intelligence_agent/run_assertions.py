@@ -78,9 +78,6 @@ ASSERTIONS: dict[str, dict] = {
         "check": lambda tr: (
             _contains(tr["response"], "intensity", "signal", "counts", "beam", "flux")
             if tr["tuple"]["anomaly_type"] == "intensity_drop"
-            else _contains(tr["response"], "drift", "decay", "declining", "trend", "slope",
-                           "intensity", "signal")
-            if tr["tuple"]["anomaly_type"] == "intensity_drift"
             else _contains(tr["response"], "focus", "zone plate", "resolution", "sharp", "blur")
         ),
     },

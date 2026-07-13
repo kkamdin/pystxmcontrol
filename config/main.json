@@ -60,8 +60,6 @@
         "anomaly": {
             "zscore_threshold": 3.0,
             "zscore_window": 20,
-            "drift_window": 15,
-            "drift_threshold": -0.05,
             "focus_decline_pct": 30.0
         },
         "agent": {

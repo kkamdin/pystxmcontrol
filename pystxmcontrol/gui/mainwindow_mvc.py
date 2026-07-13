@@ -3979,7 +3979,6 @@ class MainWindowMVC(QtWidgets.QMainWindow):
     # Brief display text per anomaly type for the alarm banner
     _ALARM_TEXT = {
         "intensity_drop":  "Beam Lost",
-        "intensity_drift": "Signal Drifting",
         "focus_decline":   "Focus Lost",
         "daq_timeout":     "DAQ Timeout",
     }

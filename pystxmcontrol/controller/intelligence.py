@@ -11,7 +11,6 @@ EventRecorder uses named channels:
 
 Anomaly rules (all configurable via main_config["intelligence"]["anomaly"]):
     intensity_drop  — z-score of current line mean vs rolling baseline
-    intensity_drift — negative slope across recent N line means
     focus_decline   — focus score drops > threshold % between regions
 
 Agent call (requires main_config["intelligence"]["agent"]["enabled"] = true
@@ -120,12 +119,10 @@ def _laplacian_variance(image: np.ndarray) -> float:
 class AnomalyDetector:
     """Stateful anomaly checker for STXM scan metrics.
 
-    Checks three rules in order of immediacy:
+    Checks two rules in order of immediacy:
     1. intensity_drop  — current line mean is > zscore_threshold sigma below
                          the rolling baseline (sudden events: beam dump, shutter)
-    2. intensity_drift — linear slope of last drift_window means is more
-                         negative than drift_threshold (fractional per line)
-    3. focus_decline   — focus score drops > focus_decline_pct % vs previous
+    2. focus_decline   — focus score drops > focus_decline_pct % vs previous
                          region (thermal drift of zone plate / stage)
 
     All thresholds are configurable via the ``anomaly`` config dict.
@@ -134,8 +131,6 @@ class AnomalyDetector:
     def __init__(self, cfg: dict):
         self.zscore_threshold = cfg.get("zscore_threshold", 3.0)
         self.zscore_window = cfg.get("zscore_window", 20)
-        self.drift_window = cfg.get("drift_window", 15)
-        self.drift_threshold = cfg.get("drift_threshold", -0.05)
         self.focus_decline_pct = cfg.get("focus_decline_pct", 30.0)
         self.pct_threshold = cfg.get("pct_threshold", 0.10)
 
@@ -170,19 +165,6 @@ class AnomalyDetector:
                 "baseline_std": round(sigma, 4),
                 "z_score": round(z, 2),
             }
-
-        if len(self._baseline) >= self.drift_window:
-            recent = np.array(list(self._baseline)[-self.drift_window:])
-            x = np.arange(len(recent), dtype=float)
-            slope = float(np.polyfit(x, recent, 1)[0])
-            if mu > 0 and (slope / mu) < self.drift_threshold:
-                return {
-                    "type": "intensity_drift",
-                    "severity": "warn",
-                    "slope_per_line": round(slope, 6),
-                    "fractional_slope": round(slope / mu, 4),
-                    "baseline_mean": round(mu, 4),
-                }
 
         return None
 
