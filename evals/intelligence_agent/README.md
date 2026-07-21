@@ -12,6 +12,13 @@ Each tuple in `tuples.jsonl` defines one test case as a combination of three dim
 
 `build_inputs.py` converts each tuple into a concrete synthetic input: a realistic `anomaly` dict (with real float values derived from deployed thresholds) and a `recent_events` list. Those inputs are then run through the actual LLM via `run_eval.py`. Assertions are scored against the responses in `run_assertions.py`. See `tuples.jsonl` for the full set of test cases.
 
+## Scientist review (2026-07-13)
+
+Following review with scientist collaborators, the test matrix and the underlying detector were both narrowed:
+
+- **`intensity_drift` was dropped entirely** (from the eval and from `AnomalyDetector` in `pystxmcontrol/controller/intelligence.py` itself) — gradual intensity drift happens during normal operation and flagging it produced false positives.
+- **`warn` severity was dropped** — only `critical` anomalies are surfaced now, to avoid alarm fatigue. `focus_decline` was raised to fire at `critical` only, mirroring how `intensity_drop`'s critical bar is computed (`base_threshold * multiplier`, see `_CRITICAL_FOCUS_DECLINE_MULTIPLIER` / `_CRITICAL_ZSCORE_MULTIPLIER` in `intelligence.py`).
+
 ## Prerequisites
 
 ```bash
@@ -91,7 +98,7 @@ open evals/intelligence_agent/report.html
 
 | File | Contents |
 |------|----------|
-| `tuples.jsonl` | Test case definitions (needs scientist review) |
+| `tuples.jsonl` | Test case definitions (reviewed with scientist collaborators — see notes above) |
 | `inputs.jsonl` | Synthetic inputs built from tuples |
 | `traces.jsonl` | LLM responses — all runs accumulated |
 | `runs_meta.jsonl` | Token counts + cost estimate per run |
@@ -109,3 +116,9 @@ open evals/intelligence_agent/report.html
 | `uses_shutter_context` | Mentions shutter when a shutter event is in context |
 | `uses_zone_plate_context` | Mentions zone plate when ZonePlateZ moved |
 | `uses_energy_context` | Mentions energy/focal length when Energy moved during focus decline |
+| `recognizes_energy_optics_coupling` | On intensity_drop with a recent Energy move, recommends re-checking/re-aligning dependent optics (mirrors, aperture/OSA, slit, grating, harmonic) |
+| `flags_osa_collision_risk` | On intensity_drop with a large SampleZ move, flags possible OSA contact and recommends moving the sample away and running an OSA (focus) scan to verify |
+| `flags_diode_out_of_position` | On intensity_drop with the diode (Detector Y) parked out of its home position, recognizes the diode isn't in frame and recommends repositioning it |
+| `suggests_checking_autofocus` | On focus_decline with a recent Energy move, suggests checking whether autofocus was enabled (honest baseline — see TODO in run_assertions.py; no telemetry distinguishes this today) |
+| `suggests_checking_zp_calibration` | On focus_decline with a recent Energy move, suggests checking/recalibrating the A0/A1 zone-plate-vs-energy equation (honest baseline — same telemetry gap) |
+| `handles_ambiguous_total_loss` | On unexplained critical intensity_drop (empty context), hedges between a serious cause (beam dump) and a benign one (sample holder frame in FOV) rather than committing to one — see TODO in run_assertions.py for splitting this once beam-status telemetry exists |

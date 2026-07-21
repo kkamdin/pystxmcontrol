@@ -70,6 +70,26 @@ _EVENTS: dict[int, list[dict]] = {
     20: [_scan_start(0),
          _event(20, "motor_moved", motor="ZonePlateZ", target=-2.5, actual=-2.5, during_scan=False),
          _event(35, "motor_moved", motor="SampleZ", target=0.15, actual=0.15, during_scan=False)],
+    21: [_scan_start(0),
+         _event(15, "motor_moved", motor="Energy", target=850.0, actual=850.0, during_scan=False)],
+    22: [_scan_start(0),
+         _event(15, "motor_moved", motor="Energy", target=850.0, actual=850.0, during_scan=False),
+         _event(25, "motor_moved", motor="ZonePlateZ", target=-2.5, actual=-2.5, during_scan=False)],
+    # Placeholder magnitude (~10x the routine ~0.15 SampleZ tweaks used elsewhere) —
+    # not a calibrated real travel limit. Update if a real safe-range spec exists.
+    23: [_scan_start(0),
+         _event(20, "motor_moved", motor="SampleZ", target=1.5, actual=1.5, during_scan=False)],
+    # Diode parked out of frame (e.g. for ptychography) before this scan started —
+    # "Detector Y" range is -13000..100 in config/motor.json; 0 is home/in-frame.
+    24: [_event(0, "motor_moved", motor="Detector Y", target=-8000.0, actual=-8000.0, during_scan=False),
+         _scan_start(10)],
+    # Same input as id=15 by necessity — the agent has no telemetry today to
+    # distinguish "autofocus was off" (id=25) from "A0/A1 miscalibrated" (id=26)
+    # from the generic "energy changed" case (id=15). See notes in tuples.jsonl.
+    25: [_scan_start(0),
+         _event(20, "motor_moved", motor="Energy", target=850.0, actual=850.0, during_scan=False)],
+    26: [_scan_start(0),
+         _event(20, "motor_moved", motor="Energy", target=850.0, actual=850.0, during_scan=False)],
 }
 
 

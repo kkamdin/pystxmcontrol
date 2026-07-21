@@ -47,6 +47,15 @@ gap. A continuous similarity score would be anti-binary; a thresholded one is no
 # TODO: Add assertions that test the misleading event_context tuples explicitly —
 #   currently we assert the agent *uses* relevant context, but we don't assert it
 #   *ignores* misleading context (e.g. SampleX move before intensity_drop).
+#
+# TODO: suggests_checking_autofocus / suggests_checking_zp_calibration (tuples id=25, id=26)
+#   are expected to have low pass rates today — IntelligenceModule.on_scan_start()
+#   (pystxmcontrol/controller/intelligence.py) doesn't forward scan['autofocus'] into the
+#   scan_start event, so recent_events has no signal to distinguish "autofocus was off"
+#   from "A0/A1 miscalibrated" from a plain energy change (id=15). That's intentional —
+#   these two assertions establish an honest current-state baseline, not a target to
+#   game with keyword tuning. Once autofocus is forwarded (and a way to signal A0/A1
+#   drift exists), split these into properly disambiguated tuples with distinct inputs.
 """
 
 import argparse
@@ -114,6 +123,107 @@ ASSERTIONS: dict[str, dict] = {
             and any(e.get("motor") == "Energy" for e in tr["recent_events"])
         ),
         "check": lambda tr: _contains(tr["response"], "energy", "focal length", "wavelength", "zone plate"),
+    },
+    "recognizes_energy_optics_coupling": {
+        "desc": (
+            "On intensity_drop with a recent Energy move, recognizes the need to "
+            "re-check/re-align dependent optics (mirrors, aperture/OSA, slit, grating, "
+            "harmonic) rather than attributing the drop elsewhere"
+        ),
+        "applies": lambda tr: (
+            tr["tuple"]["anomaly_type"] == "intensity_drop"
+            and any(e.get("motor") == "Energy" for e in tr["recent_events"])
+        ),
+        "check": lambda tr: _contains(
+            tr["response"],
+            "mirror", "aperture", "osa", "slit", "grating", "harmonic",
+            "realign", "re-align", "reposition",
+        ),
+    },
+    "flags_osa_collision_risk": {
+        "desc": (
+            "On intensity_drop with a large SampleZ move, flags possible OSA "
+            "contact and recommends moving the sample away and running an OSA "
+            "(focus) scan to verify"
+        ),
+        "applies": lambda tr: (
+            tr["tuple"]["anomaly_type"] == "intensity_drop"
+            and any(e.get("motor") == "SampleZ" for e in tr["recent_events"])
+        ),
+        "check": lambda tr: (
+            _contains(tr["response"], "osa")
+            and _contains(tr["response"], "move", "back", "away", "retract", "scan", "verify", "confirm")
+        ),
+    },
+    "suggests_checking_autofocus": {
+        "desc": (
+            "On focus_decline with a recent Energy move, suggests checking whether "
+            "autofocus/energy-tracking was enabled for the scan (honest baseline — "
+            "see TODO above, agent has no direct telemetry for this yet)"
+        ),
+        "applies": lambda tr: (
+            tr["tuple"]["anomaly_type"] == "focus_decline"
+            and any(e.get("motor") == "Energy" for e in tr["recent_events"])
+        ),
+        "check": lambda tr: _contains(tr["response"], "autofocus", "auto-focus", "auto focus"),
+    },
+    "suggests_checking_zp_calibration": {
+        "desc": (
+            "On focus_decline with a recent Energy move, suggests checking/recalibrating "
+            "the zone-plate-position-vs-energy equation (A0/A1) (honest baseline — see "
+            "TODO above, agent has no direct telemetry for this yet)"
+        ),
+        "applies": lambda tr: (
+            tr["tuple"]["anomaly_type"] == "focus_decline"
+            and any(e.get("motor") == "Energy" for e in tr["recent_events"])
+        ),
+        "check": lambda tr: _contains(
+            tr["response"], "a0", "a1", "calibrat", "equation",
+        ),
+    },
+    "flags_diode_out_of_position": {
+        "desc": (
+            "On intensity_drop with the diode (Detector Y) parked out of its "
+            "home position, recognizes the diode isn't in frame and recommends "
+            "repositioning it"
+        ),
+        "applies": lambda tr: (
+            tr["tuple"]["anomaly_type"] == "intensity_drop"
+            and any(e.get("motor") == "Detector Y" for e in tr["recent_events"])
+        ),
+        "check": lambda tr: (
+            _contains(tr["response"], "diode", "detector")
+            and _contains(tr["response"], "frame", "home", "position", "align", "move", "reposition", "0,0", "0, 0")
+        ),
+    },
+    "handles_ambiguous_total_loss": {
+        # Empty-context intensity_drop covers two motivating scenarios that are
+        # indistinguishable to the agent today: a beam dump (serious, no ring-current/
+        # beam-status telemetry reaches the agent) and the sample holder frame entering
+        # the field of view (benign — SampleX/SampleY moves are deliberately excluded
+        # from the event stream, see controller.py _INTEL_MOTORS). Until beam status
+        # becomes queryable (e.g. an EPICS PV, post-migration) the agent can't tell
+        # these apart, so we only require it to hedge between both hypotheses rather
+        # than commit to one. TODO: once a beam-status PV exists, split this back into
+        # two tuples (one still "empty", one with the PV read in recent_events) and
+        # assert the specific correct action for each.
+        "desc": (
+            "On unexplained critical intensity_drop, hedges between a serious cause "
+            "(beam dump) and a benign one (sample holder frame in FOV) instead of "
+            "committing to a single diagnosis"
+        ),
+        "applies": lambda tr: (
+            tr["tuple"]["anomaly_type"] == "intensity_drop"
+            and tr["tuple"]["event_context"] == "empty"
+        ),
+        "check": lambda tr: (
+            _contains(tr["response"], "beam", "source", "ring", "status")
+            and _contains(
+                tr["response"],
+                "sample", "holder", "frame", "benign", "expected",
+                "could", "possible", "possibly", "either", "may be",
+            )
+        ),
     },
 }
 
