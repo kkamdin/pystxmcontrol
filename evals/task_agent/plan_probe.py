@@ -35,14 +35,21 @@ PROPOSE_PLAN_SCHEMA: dict = {
     "function": {
         "name": "propose_plan",
         "description": (
-            "Declare the concrete scan parameters you intend to use, without configuring or "
-            "starting anything. Call this whenever you state specific numbers to the user "
-            "before they've confirmed the plan -- including your very first response to a new "
-            "request. Use the exact same field names as update_scan. Omit fields you haven't "
-            "decided yet. Do NOT call this once you're actually ready to configure the scan -- "
-            "use update_scan() for that; propose_plan() has no effect on the pending scan "
-            "definition. If you're asking a clarifying question instead of proposing concrete "
-            "parameters, don't call this at all."
+            "Use this tool whenever you want to give the user a SUGGESTION or RECOMMENDATION of "
+            "specific scan parameters -- any time, before you actually execute anything. This "
+            "includes your very first response to a new request, proposing next steps after a "
+            "scan completes, or just thinking out loud about numbers you have in mind. Prefer "
+            "calling propose_plan() over writing the numbers only in your reply text, so your "
+            "suggestion is structured and machine-readable, not just prose. Use the exact same "
+            "field names as update_scan; omit fields you haven't decided yet. propose_plan() is "
+            "a preview only -- it does NOT configure or start anything, so call it freely, as "
+            "often as you like, with no side effects. "
+            "Then, once you actually execute -- the user confirmed, or you're proceeding on your "
+            "own judgment -- call update_scan() with those same parameters (and then "
+            "start_scan()) instead; propose_plan() itself never touches the pending scan "
+            "definition, so it cannot substitute for update_scan() at that point. If you're only "
+            "asking a clarifying question with no concrete numbers in mind yet, you don't need to "
+            "call this at all."
         ),
         "parameters": {
             "type": "object",

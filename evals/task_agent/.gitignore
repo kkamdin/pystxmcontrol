@@ -3,5 +3,7 @@ traces.jsonl
 results.jsonl
 runs_meta.jsonl
 report.html
+assertion_report.html
 task_*.json
+batch_run_summary.json
 __pycache__/

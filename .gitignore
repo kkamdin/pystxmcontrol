@@ -2,6 +2,14 @@
 .DS_Store
 .DS_Store?
 
+# Stray literal "~" directory some tool/script has written real config/DB/scan data into when
+# run with an unexpanded ~ path -- never intentional, never publishable.
+/~/
+
+# Skills/plugin marketplace clones checked out into the working tree (nested git repos, e.g.
+# .skills/evals-skills) -- not part of this project, never publishable.
+.skills/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

@@ -17,11 +17,12 @@ RESULTS_PATH = Path(__file__).parent / "results.jsonl"
 RUNS_META_PATH = Path(__file__).parent / "runs_meta.jsonl"
 REPORT_PATH = Path(__file__).parent / "report.html"
 
-ASSERTION_ORDER = ["well_formed", "plan_formatted", "right_approach", "params_match", "dispatchable"]
+ASSERTION_ORDER = ["well_formed", "plan_formatted", "right_approach", "avoids_wrong", "params_match", "dispatchable"]
 ASSERTION_ABBR = {
     "well_formed": "WF",
     "plan_formatted": "PF",
     "right_approach": "RA",
+    "avoids_wrong": "AW",
     "params_match": "PMS",
     "dispatchable": "DISP",
 }
@@ -29,6 +30,7 @@ ASSERTION_DESC = {
     "well_formed": "No API error; tool args parse correctly",
     "plan_formatted": "Plan stage: used propose_plan (or a JSON block) when concrete params were stated",
     "right_approach": "Called a tool listed in must_call",
+    "avoids_wrong": "No tool call is in the stage's forbidden_tools list",
     "params_match": "update_scan params match the expected strategy",
     "dispatchable": "Every tool call is executable by the real ToolSet",
 }

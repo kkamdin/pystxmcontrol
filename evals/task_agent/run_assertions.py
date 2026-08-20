@@ -12,7 +12,8 @@ Assertions (True / False / None=N/A):
   avoids_wrong         - no chosen tool is in expected.forbidden_tools
   params_match         - update_scan params match expected.param_checks
   dispatchable         - every tool exists, args match its schema, update_scan args accepted
-                         by a real offline ToolSet
+                         by a real offline ToolSet (a no-args update_scan() call -- the tool's
+                         documented "inspect current config" mode -- counts as accepted too)
 
 param_checks types (evaluated in _params_match_strategy):
   energy_list_len: N          - update_scan energy_list has exactly N entries
@@ -28,6 +29,11 @@ param_checks types (evaluated in _params_match_strategy):
                                 len(energy_list)), for distinguishing a spectrum from a 2-point map
   update_scan_nonempty: true  - update_scan called with at least one non-empty-args call
                                 (catches update_scan({}) confusion from stale server state)
+  scan_type_valid: true       - any update_scan scan_type is one of the instrument's real
+                                configured types, not a colloquial/invalid guess (e.g.
+                                "z-stack") -- the mock always accepts update_scan regardless
+                                of scan_type, so this checks the AGENT avoided an invalid
+                                type rather than relying on (mocked-away) server rejection
 
 Usage:
     python evals/task_agent/run_assertions.py                 # latest run
@@ -57,6 +63,12 @@ _TOL = 1e-6
 
 _PYTYPE = {"number": (int, float), "integer": int, "string": str,
            "array": list, "boolean": bool, "object": dict}
+
+# Must match the mock server's get_config() response in run_eval.py -- the real ToolSet
+# rejects a colloquial/invalid scan_type (e.g. "z-stack") at update_scan() time, but the
+# mock accepts any scan_type unconditionally, so scan_type_valid below is the only signal
+# that the agent itself avoided an invalid guess rather than relying on server rejection.
+_VALID_SCAN_TYPES = {"Image", "Focus", "Line Spectrum", "Single Motor", "Double Motor"}
 
 # ---------------------------------------------------------------------------
 # Plan-stage scoring: plan_proposal is free text, not a tool call, so it can't be
@@ -119,10 +131,46 @@ def _energies_from_text(text: str) -> list[float]:
     return out
 
 
-def _real_call(trace: dict, name: str) -> dict:
+def _real_call(calls: list[dict], name: str) -> dict:
+    """Merge every real (non-empty) call to `name` in this call list, in order -- later
+    calls override earlier keys on conflict, matching production's own update_scan
+    semantics (each real call merges onto the in-memory pending state:
+    `{**self._scan, **kwargs}`). A call with empty arguments -- update_scan()'s documented
+    no-args "inspect current config" mode -- contributes nothing and is skipped, rather
+    than winning by virtue of being first. Previously this returned only the FIRST
+    matching call's arguments, so a legitimate peek-then-configure turn (update_scan() to
+    check state, then update_scan(...) with the real values) was checked against the
+    peek's empty args instead of the real configuration that followed it. Always returns a
+    dict, defaulting to {} when no real call exists -- callers that need a None sentinel
+    for "wasn't really called" do `or None` at the call site.
+
+    Takes a `calls` list rather than a trace so callers can scope the merge to one scan
+    episode (see _first_scan_episode) instead of the whole turn -- merging update_scan
+    calls from a SECOND, later, legitimate scan (e.g. a single-energy zoom-in confirmatory
+    scan after a two-energy elemental map) into the first scan's checked state broke
+    energy_list_len/energy_in_range/center_near for turns that correctly run more than one
+    scan."""
+    merged = {}
+    for c in calls:
+        if c["name"] != name or not isinstance(c["arguments"], dict) or not c["arguments"]:
+            continue
+        merged.update(c["arguments"])
+    return merged
+
+
+def _first_scan_episode(trace: dict) -> list[dict]:
+    """Tool calls up to and including the first start_scan/start_multiregion_scan -- the
+    episode that action-stage param_checks (energy_list_len, energy_in_range,
+    if_update_scan_center_near) are meant to validate. A turn is free to run a second,
+    later scan (a confirmatory zoom-in, a follow-up map) without that scan's update_scan
+    args being merged into the first scan's checked state."""
     calls = trace.get("tool_calls") or []
-    return next((c["arguments"] for c in calls if c["name"] == name
-                 and isinstance(c["arguments"], dict)), {})
+    out = []
+    for c in calls:
+        out.append(c)
+        if c["name"] in ("start_scan", "start_multiregion_scan"):
+            break
+    return out
 
 
 def _has_energies(d: dict) -> bool:
@@ -142,24 +190,31 @@ def _plan_signal(trace: dict) -> tuple[dict | None, bool | None]:
        update_scan() fields (real wins on conflicts, since it reflects what's actually staged).
     3. the agent's own structured ```json plan block in free text (see _plan_block()) --
        kept as a defensive fallback in case a model emits this format unprompted.
-    4. legacy regex energy-scraping, only as a last resort when none of the above exists.
-       format_ok is False here only if the prose committed to concrete numbers with no
-       structured signal at all -- an agent instruction-following failure, not an eval
-       heuristic gap. None (N/A) if it's a legitimate clarifying question with no numbers
-       stated yet (see README's plan_detail semantics).
+    4. legacy regex energy-scraping, only as a last resort when none of the above exists --
+       used ONLY to populate `upd` for any param_checks that apply to this stage (e.g.
+       energy_in_range on a plan-stage task). format_ok is always None (N/A) here, never
+       False: not calling propose_plan/update_scan is equally consistent with the agent
+       correctly asking a clarifying question or explaining a refusal by citing the
+       instrument's current/general state (e.g. "Energy (600.0 eV)" read back from
+       get_config(), or "photon energies typically between 100-2000 eV" describing the
+       beamline's range) -- neither is a "plan" at all, so there's nothing to penalize as
+       badly formatted. The regex can't reliably tell that apart from a genuine sloppy
+       commitment to concrete numbers in prose, so it no longer tries; right_approach,
+       avoids_wrong, and dispatchable already independently cover whether the agent's
+       actual behavior was correct.
 
     Falling back to regex whenever a real call/block IS present would let the regex's
     best-effort extraction silently overwrite known-good structured data with whatever stray
     numbers it finds in the surrounding text (see the "1 eV resolution" / "0.5 eV steps" bugs
     this replaced).
     """
-    real = _real_call(trace, "update_scan")
+    real = _real_call(trace.get("tool_calls") or [], "update_scan")
     text = trace.get("final_text") or ""
     upd = dict(real)
     if _has_energies(real):
         return upd or None, None
 
-    proposed = _real_call(trace, "propose_plan")
+    proposed = _real_call(trace.get("tool_calls") or [], "propose_plan")
     if proposed:
         for k, v in proposed.items():
             upd.setdefault(k, v)
@@ -174,7 +229,7 @@ def _plan_signal(trace: dict) -> tuple[dict | None, bool | None]:
     energies = _energies_from_text(text)
     if energies:
         upd["energy_list"] = energies
-    return upd or None, (False if energies else None)
+    return upd or None, None
 
 
 def _offline_toolset():
@@ -219,7 +274,11 @@ def _dispatchable(name, args, toolset):
             res = toolset.update_scan(**args)
         except Exception as e:
             return False, f"update_scan raised {e!r}"
-        if not res.startswith("Scan updated"):
+        # update_scan's own tool-schema description explicitly documents a no-args "inspect
+        # the current config" mode, which returns "Current scan definition: ..." instead of
+        # "Scan updated: ...". That's a real, prompt-sanctioned success path, not a failure --
+        # accept either prefix rather than only recognizing the with-args reply.
+        if not (res.startswith("Scan updated") or res.startswith("Current scan definition")):
             return False, res.splitlines()[0][:120]
     return True, None
 
@@ -275,8 +334,13 @@ def _params_match_strategy(checks, upd, names, calls):
             detail["energy_in_range"] = (all(lo <= e <= hi for e in energies) if energies else None)
 
         elif name == "if_update_scan_center_near":
-            # N/A when the agent positioned via load_intelligence_particles instead of update_scan.
-            if upd is None:
+            # N/A when the agent positioned via load_intelligence_particles instead of
+            # update_scan -- this comment described that exception for a while, but the code
+            # never actually checked `names` for it, so a well-behaved agent that positioned
+            # the follow-up scan via load_intelligence_particles() and only touched
+            # energy/dwell in its update_scan call was scored a false center_near failure
+            # (cx/cy were simply absent from that particular call, not wrong).
+            if upd is None or "load_intelligence_particles" in names:
                 detail["center_near"] = None
             else:
                 cx, cy = upd.get("x_center"), upd.get("y_center")
@@ -330,6 +394,14 @@ def _params_match_strategy(checks, upd, names, calls):
             else:
                 detail["update_scan_nonempty"] = any(bool(c["arguments"]) for c in all_upd_calls)
 
+        elif name == "scan_type_valid":
+            # Any update_scan call's scan_type must be a real configured type, not a
+            # colloquial/invalid guess (e.g. "z-stack", "tomo").
+            all_types = [c["arguments"].get("scan_type") for c in all_upd_calls
+                         if c["arguments"].get("scan_type") is not None]
+            detail["scan_type_valid"] = (all(t in _VALID_SCAN_TYPES for t in all_types)
+                                          if all_types else None)
+
         else:
             detail[name] = None  # unknown check type -> N/A
 
@@ -353,7 +425,14 @@ def evaluate(trace, toolset):
     names = [c["name"] for c in calls]
     r = {}
 
-    r["well_formed"] = (not trace.get("error")) and all(c.get("arg_parse_error") is None for c in calls)
+    # agent.py's run() loop catches the LLM call's own exceptions internally and returns them
+    # as ordinary final_text ("LLM call failed: {e}") rather than raising -- run_eval.py's
+    # try/except around agent.run() never sees it, so trace["error"] stays None even when
+    # every underlying API call failed outright (e.g. a model/provider incompatibility).
+    # Catch that sentinel directly so a fully broken run doesn't silently score well_formed=True.
+    llm_call_failed = (trace.get("final_text") or "").startswith("LLM call failed:")
+    r["well_formed"] = (not trace.get("error")) and not llm_call_failed \
+        and all(c.get("arg_parse_error") is None for c in calls)
     if not r["well_formed"]:
         for k in ("right_approach", "avoids_wrong", "plan_formatted", "params_match", "dispatchable"):
             r[k] = None
@@ -368,8 +447,15 @@ def evaluate(trace, toolset):
         upd, r["plan_formatted"] = _plan_signal(trace)
     else:
         r["plan_formatted"] = None
-        upd = next((c["arguments"] for c in calls if c["name"] == "update_scan"
-                    and isinstance(c["arguments"], dict)), None)
+        # Real update_scan wins; if the agent never actually configured anything but did
+        # propose_plan() with concrete parameters, validate THOSE against param_checks instead
+        # of leaving everything N/A -- a confident-but-wrong proposal (e.g. the wrong element's
+        # edge) must still fail energy_in_range/energy_list_len, not get a free pass just because
+        # must_call allowed propose_plan as an alternative to real execution.
+        episode = _first_scan_episode(trace)
+        upd = _real_call(episode, "update_scan") or None
+        if upd is None:
+            upd = _real_call(episode, "propose_plan") or None
     pms, pms_detail = _params_match_strategy(exp.get("param_checks"), upd, names, calls)
     r["params_match"] = pms
     r["params_detail"] = pms_detail
@@ -379,7 +465,7 @@ def evaluate(trace, toolset):
     return r
 
 
-ORDER = ["well_formed", "plan_formatted", "right_approach", "params_match", "dispatchable"]
+ORDER = ["well_formed", "plan_formatted", "right_approach", "avoids_wrong", "params_match", "dispatchable"]
 
 
 def _score(run_id, traces, toolset, out_path):
@@ -414,7 +500,7 @@ def _score(run_id, traces, toolset, out_path):
 
 
 _ABBR = {"well_formed": "WF", "plan_formatted": "PF", "right_approach": "RA",
-         "params_match": "PMS", "dispatchable": "DISP"}
+         "avoids_wrong": "AW", "params_match": "PMS", "dispatchable": "DISP"}
 
 
 def _grouped_summary(traces, toolset):

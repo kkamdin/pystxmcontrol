@@ -63,22 +63,33 @@ class _MockServer:
         self.overrides = overrides or {}   # tool name -> canned result (adverse-condition tests)
         self.turn_calls = []   # {"name", "arguments", "llm_iter"} for the current agent.run()
         self._llm_iter = 0     # incremented after each LLM response, before its tools run
+        self._last_energies = None  # most recent update_scan's energy_list, for _report()
 
     def new_llm_iter(self):
         """Signal that a new LLM response has arrived. Call this after each completion."""
         self._llm_iter += 1
 
     def _report(self):
+        # Reflect whatever energies the agent actually configured, not a hardcoded Fe pair --
+        # a fixed "Fe at 709.5 eV" response confused agents correctly surveying a different
+        # element (e.g. Mn at 635/640 eV), which then paused to flag the mismatch instead of
+        # proceeding, scoring as a false right_approach failure that was really a mock bug.
+        energies = self._last_energies or [709.5, 705.0]
+        edge, pre = max(energies), min(energies)
         return json.dumps({"recommendations": [{
             "type": "task_recommendation", "subtype": "two_energy_particles",
-            "edge_energy_eV": 709.5, "preedge_energy_eV": 705.0, "particle_count": 1,
+            "edge_energy_eV": edge, "preedge_energy_eV": pre, "particle_count": 1,
             "particles": [{"center_um": {"x": self.particle["x"], "y": self.particle["y"]},
                            "size_um": {"x": 0.8, "y": 0.8}, "area_px": 51}],
-            "reason": f"Found 1 Fe particle at x={self.particle['x']}, y={self.particle['y']} um.",
+            "reason": f"Found 1 particle showing elemental contrast at x={self.particle['x']}, y={self.particle['y']} um.",
         }]}, indent=2)
 
     def dispatch(self, name, args):
         self.turn_calls.append({"name": name, "arguments": args, "llm_iter": self._llm_iter})
+        if name == "update_scan":
+            el = args.get("energy_list")
+            if isinstance(el, list) and len(el) >= 2:
+                self._last_energies = el
         if name in self.overrides:        # adverse-condition injection (error / no particles / ...)
             return self.overrides[name]
         p = self.particle
